@@ -285,7 +285,7 @@ Replay requires the same camera geometry/reference and never sends UDP.
 | `test_robot_pose.py` (6) | position, heading, parallax, size check, wrong id, grip offset |
 | `test_find_zones.py` (3) | six zones and colors found among stones, missing zone reported, grown exclusion circles |
 
-All 73 root-project tests pass after this update: 58 original tests plus 15 new
+All 84 root-project tests pass after this update: 58 original tests plus 26 new
 calibration, reference and supplied-photo checks. The two supplied photos establish
 a reference mismatch, not real-camera classification accuracy. See
 [VALIDATION.md](VALIDATION.md) for evidence and hardware limitations.
@@ -293,6 +293,14 @@ a reference mismatch, not real-camera classification accuracy. See
 See [REVIEW_AND_PLAN.md](REVIEW_AND_PLAN.md) for PDF rules, design decisions,
 physical-lighting improvements, remaining robot work, and field acceptance tests.
 ## Autonomy (autonomy.py)
+
+The latest fix prevents forward steering from reversing one wheel close to the
+stage point. It preserves the locked stone while that stone is under the robot,
+advances to approach when the jaws are already near it, and reports why the planner
+stopped. Each run saves its config and a per-frame trace under
+`runs/autonomy/<time>/`. See [AUTONOMY_FIX_TH.md](AUTONOMY_FIX_TH.md) for
+deployment and status meanings. Simulation does not validate real motor response;
+start field checks with one stone.
 
 ```bash
 python autonomy.py --sim --show                   # simulated robot + field, watch it (q quits)

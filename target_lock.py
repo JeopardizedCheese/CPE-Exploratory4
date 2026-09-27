@@ -25,9 +25,11 @@ class TargetLock:
     def _near(self, a, b):
         return math.hypot(a['x'] - b['x'], a['y'] - b['y']) <= self.match_mm
 
-    def update(self, targets, now, observations=(), occluded=False, choose=None):
+    def update(self, targets, now, observations=(), occluded=False, choose=None, acquire=True):
         """targets: pickable targets this frame. observations: every detection
-        (color, x, y), used to notice a colour change. Returns the locked target or None."""
+        (color, x, y), used to notice a colour change. acquire=False preserves the
+        current lock or releases it, without silently selecting a different stone.
+        Returns the locked target or None."""
         if self.target is not None:
             same = [t for t in targets if t['color'] == self.target['color'] and self._near(t, self.target)]
             if same:
@@ -43,7 +45,7 @@ class TargetLock:
                 self.release('lost')
             else:
                 self.reason = 'occluded' if occluded else 'holding'
-        if self.target is None and targets:
+        if acquire and self.target is None and targets:
             pick = (choose or (lambda ts: max(ts, key=lambda t: t['confidence'])))(targets)
             if pick is not None:
                 self.target = dict(pick)

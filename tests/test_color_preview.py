@@ -40,7 +40,7 @@ class ProvidedPhotoTests(unittest.TestCase):
     def test_new_measured_profile_requires_calibration(self):
         # Checks the setup gate, not the file's current state: the team fills in
         # corners, colors and zones over time, so they are cleared here.
-        cfg = json.loads((ROOT / 'calib.json').read_text())
+        cfg = json.loads((ROOT / 'field' / 'calib.json').read_text())
         self.assertEqual(cfg['arena']['size_mm'], [2100, 1200])
         self.assertGreater(cfg['robot_tag']['camera_height_mm'], 0)
         cfg['hsv'] = {}

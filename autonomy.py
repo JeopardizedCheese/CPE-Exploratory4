@@ -2,7 +2,8 @@
 
     python autonomy.py --sim --show                 # simulated robot and field, watch it
     python autonomy.py --sim --scenario scattered   # easier field
-    python autonomy.py 192.168.1.50 --camera 1      # real robot (sends 'start', 5-minute run)
+    python autonomy.py 10.178.188.50 --camera 1     # real robot (sends 'start'; q/x/ESC stops)
+    python autonomy.py --dry-run --camera 1       # camera/planner only, no robot commands
 
 The planner is deliberately simple:
 
@@ -20,7 +21,7 @@ The planner is deliberately simple:
 
 The gripper has no lift: stones stay on the floor and are pushed/slid in the closed jaws.
 
-Failures never drop a stone in the wrong place: approach/align/goto time out into a
+Approach/align/goto time out into a
 short backoff and the stone is skipped for a while; a missed grab is noticed when the
 stone is still visible at its old spot after the robot has left, and the gripper is
 only opened over the correct zone.
@@ -33,6 +34,7 @@ import json
 import math
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from target_lock import TargetLock
@@ -40,6 +42,7 @@ from target_lock import TargetLock
 DEFAULTS = {
     'cruise': 0.45, 'creep': 0.18, 'turn': 0.35, 'min_turn': 0.16,
     'kp_turn': 1.0,                 # drive-command per radian of heading error
+    'max_forward_steer_ratio': 0.8, # below 1: neither wheel reverses in the forward branch
     'turn_in_place_deg': 35,        # larger heading error: stop and turn first
     'stage_mm': 160, 'stage_tol_mm': 35, 'align_tol_deg': 6,
     'grip_tol_mm': 6, 'approach_max_side_mm': 18,   # about half of (open jaw gap - stone width)
@@ -87,6 +90,7 @@ class Planner:
         self.placed = 0
         self.events_log = []
         self.pile_center = None
+        self.debug = {}
 
     # ------------------------------------------------------------ helpers
     def _go(self, s, now, why=''):
@@ -187,15 +191,24 @@ class Planner:
         dist = math.hypot(gx - px, gy - py)
         err = wrap(math.atan2(gy - py, gx - px) - math.radians(pose.heading_deg))
         o = self.o
+        self.debug.update(goal_x_mm=gx, goal_y_mm=gy, goal_distance_mm=dist,
+                          heading_error_deg=math.degrees(err))
         if abs(err) > math.radians(o['turn_in_place_deg']):
+            self.debug['reason'] = 'turn_to_goal'
             w = math.copysign(max(o['min_turn'], min(o['turn'], o['kp_turn'] * abs(err))), err)
             return w, -w
         v = speed * clamp(dist / 200.0, 0.4, 1.0) * math.cos(err)
-        w = clamp(o['kp_turn'] * err, -o['turn'], o['turn'])
+        # Near the goal, v gets smaller while the old steering term did not.
+        # At 80 mm / 20 degrees it gave (+.518, -.180), another pivot instead
+        # of forward travel. MIN_DUTY in firmware makes that reversal pronounced.
+        steer_limit = min(o['turn'], abs(v) * clamp(o['max_forward_steer_ratio'], 0, .95))
+        w = clamp(o['kp_turn'] * err, -steer_limit, steer_limit)
+        self.debug['reason'] = 'drive_forward'
         return clamp(v + w, -1, 1), clamp(v - w, -1, 1)
 
     def _turn_to(self, pose, heading):
         err = wrap(heading - math.radians(pose.heading_deg))
+        self.debug.update(heading_error_deg=math.degrees(err), reason='turn_to_approach')
         if abs(err) <= math.radians(self.o['align_tol_deg']):
             return None
         o = self.o
@@ -203,12 +216,44 @@ class Planner:
         return w, -w
 
     # ------------------------------------------------------------ main step
-    def step(self, now, pose, targets, observations, status=None):
+    def step(self, now, pose, targets, observations, status=None, *,
+             perception_status='ok', require_status=False):
+        """Plan one frame; diagnostics explain both commands and stop conditions.
+
+        Real runs require fresh firmware status and valid perception. Simulation
+        callers may omit status; neither a lost tag nor invalid vision is bypassed.
+        """
+        before = self.state
+        self.debug = {'state': before, 'reason': '', 'targets': len(targets),
+                      'observations': len(observations), 'perception': perception_status,
+                      'pose_age_s': None if pose is None else now-pose.t,
+                      'firmware_state': status.get('state') if status else None}
+        if perception_status != 'ok':
+            result = (0.0, 0.0, [])
+            self.debug['reason'] = 'vision_' + perception_status
+        elif require_status and not status:
+            result = (0.0, 0.0, [])
+            self.debug['reason'] = 'no_fresh_firmware_status'
+        else:
+            result = self._step(now, pose, targets, observations, status)
+        l, r, events = result
+        if self.state != before:
+            why = self.events_log[-1][3] if self.events_log else ''
+            self.debug['reason'] = f'{before}->{self.state}' + (f': {why}' if why else '')
+        if not self.debug['reason']:
+            self.debug['reason'] = 'waiting_' + self.state.lower()
+        self.debug.update(state=self.state, l=l, r=r, lock_reason=self.lock.reason,
+                          target=dict(self.lock.target) if self.lock.target else None)
+        return result
+
+    def _step(self, now, pose, targets, observations, status=None):
         """Returns (l, r, events). events: [(cmd, fields)] one-off commands to send."""
         ev = []
         if status and status.get('state') not in (None, 'RUNNING'):
+            self.debug['reason'] = 'firmware_' + str(status.get('state'))
             return 0.0, 0.0, ev
         if pose is None or now - pose.t > self.o['pose_timeout_s']:
+            self.debug['reason'] = 'tag_missing' if pose is None else 'pose_stale'
             return 0.0, 0.0, ev                          # no fresh pose: stand still
         if observations:
             xs = [o['x'] for o in observations]
@@ -241,7 +286,10 @@ class Planner:
             return (*self._drive_to(pose, pose.x, pose.y, self.park[0], self.park[1], o['cruise']), ev)
 
         if s == 'GOTO_STAGE':
-            t = self.lock.update(usable, now, observations)
+            locked = self.lock.target
+            covered = bool(locked and self._under_robot(pose, locked['x'], locked['y']))
+            t = self.lock.update(usable, now, observations, occluded=covered, acquire=False)
+            self.debug['target_under_robot'] = covered
             if t is None:
                 self._go('SEARCH', now, f'target {self.lock.reason}')
                 return 0.0, 0.0, ev
@@ -249,9 +297,14 @@ class Planner:
             ux, uy = math.cos(self.heading), math.sin(self.heading)
             gx, gy = t['x'] - pose.grip_x, t['y'] - pose.grip_y
             along, side = gx * ux + gy * uy, -gx * uy + gy * ux
-            on_line = (40 < along < o['stage_mm'] + 60 and abs(side) < 12
+            # If already closer than the staging distance, align and approach;
+            # do not turn back toward a staging point behind the robot.
+            on_line = (-o['grip_tol_mm'] <= along < o['stage_mm'] + 60 and abs(side) < 12
                        and abs(wrap(self.heading - heading)) < math.radians(25))
             ax, ay = self._axle(pose)
+            self.debug.update(goal_x_mm=sx, goal_y_mm=sy,
+                              goal_distance_mm=math.hypot(sx-ax, sy-ay),
+                              along_mm=along, side_mm=side)
             if on_line or self._arrived(pose, ax, ay, sx, sy, o['stage_tol_mm']):
                 self._go('ALIGN', now)
                 return 0.0, 0.0, ev
@@ -262,12 +315,14 @@ class Planner:
             return (*self._drive_to(pose, ax, ay, sx, sy, o['cruise']), ev)
 
         if s == 'ALIGN':
-            t = self.lock.update(usable, now, observations, occluded=True)
+            t = self.lock.update(usable, now, observations, occluded=True, acquire=False)
             if t is None:
                 self._go('SEARCH', now, f'target {self.lock.reason}')
                 return 0.0, 0.0, ev
             cmd = self._turn_to(pose, self.heading)
             ready = self._servo_at(status, 'grip', o['grip_open'])
+            if cmd is None and not ready:
+                self.debug['reason'] = 'waiting_gripper_open'
             if cmd is None and ready:
                 self.side_avg = None
                 self._go('APPROACH', now)
@@ -279,7 +334,7 @@ class Planner:
             return (*(cmd or (0.0, 0.0)), ev)
 
         if s == 'APPROACH':
-            t = self.lock.update(usable, now, observations, occluded=True)
+            t = self.lock.update(usable, now, observations, occluded=True, acquire=False)
             if t is None:
                 self._go('SEARCH', now, f'target {self.lock.reason}')
                 return 0.0, 0.0, ev
@@ -291,6 +346,7 @@ class Planner:
             along, side = dx * ux + dy * uy, -dx * uy + dy * ux
             self.side_avg = side if self.side_avg is None else 0.6 * self.side_avg + 0.4 * side
             side = self.side_avg
+            self.debug.update(along_mm=along, side_mm=side)
             if along <= o['grip_tol_mm']:
                 if abs(side) > o['approach_max_side_mm']:
                     if self.retries < 1:                 # back up and line up once more
@@ -310,11 +366,15 @@ class Planner:
                 return 0.0, 0.0, ev
             wanted = self.heading + math.atan2(side, o.get('approach_lookahead_mm', 150))
             err = wrap(wanted - heading)
+            self.debug['heading_error_deg'] = math.degrees(err)
             if abs(err) > math.radians(20):                  # badly off: turn on the spot first
+                self.debug['reason'] = 'turn_to_approach'
                 w = math.copysign(o['min_turn'], err)
                 return w, -w, ev
-            steer = clamp(0.8 * err, -0.12, 0.12)
             v = o['creep']
+            limit = min(.12, abs(v) * clamp(o['max_forward_steer_ratio'], 0, .95))
+            steer = clamp(0.8 * err, -limit, limit)
+            self.debug['reason'] = 'creep_to_stone'
             return v + steer, v - steer, ev
 
         if s == 'GRIP':
@@ -475,6 +535,12 @@ class DriveSender:
         with self.lock:
             self.l, self.r, self.t = l, r, time.monotonic()
 
+    def event(self, cmd, **fields):
+        # The heartbeat and one-shot commands share a sequence counter. Serialize
+        # sends so a newer drive packet cannot overtake a gripper/start command.
+        with self.lock:
+            return self.link.send(cmd, **fields)
+
     def _run(self):
         while self.ok:
             with self.lock:
@@ -488,11 +554,48 @@ class DriveSender:
         self.thread.join(timeout=1.0)
 
 
+def setup_problems(cfg, config_path):
+    """Check the actual run configuration before opening a camera or enabling wheels."""
+    problems = []
+    arena = cfg.get('arena', {})
+    if len(arena.get('corners_px', [])) != 4:
+        problems.append('arena.corners_px needs four calibrated corners')
+    missing = [str(cid) for cid in range(1, 7)
+               if not any(str(k).split('_')[0] == str(cid) and bool(v)
+                          for k, v in cfg.get('hsv', {}).items())]
+    if missing:
+        problems.append('missing HSV color IDs: ' + ', '.join(missing))
+    zones = cfg.get('zones', {})
+    if {str(k).split('_')[0] for k in zones} != {str(c) for c in range(1, 7)}:
+        problems.append('zones must contain all six labeled scoring destinations')
+    for key, zone in zones.items():
+        if len(zone.get('center_mm', [])) != 2 or zone.get('radius_mm', 0) <= 0:
+            problems.append(f'invalid zone geometry: {key}')
+    if not cfg.get('robot_tag'):
+        problems.append('robot_tag configuration is missing')
+    background_path = Path(config_path).parent / cfg.get('background_path', 'background.png')
+    if not background_path.is_file():
+        problems.append('missing empty-field reference: ' + str(background_path))
+    return problems
+
+
+def diagnostic_text(info):
+    def number(key, suffix=''):
+        value = info.get(key)
+        return '--' if value is None else f'{value:.1f}{suffix}'
+    return (f"{info['state']} | {info['reason']} | L={info['l']:+.2f} R={info['r']:+.2f} | "
+            f"goal={number('goal_distance_mm', 'mm')} err={number('heading_error_deg', 'deg')} | "
+            f"lock={info['lock_reason']}")
+
+
 def run_real(args, cfg):
     import cv2
     from detect_live import LatestFrame
     from perception import Perception, draw_robot
     from teleop import Link
+    problems = setup_problems(cfg, args.config)
+    if problems:
+        raise SystemExit('Autonomy not started. Check ' + str(args.config.resolve()) + ':\n- ' + '\n- '.join(problems))
     warning = grip_calibration_warning(cfg)
     if warning:
         print(warning)
@@ -502,6 +605,9 @@ def run_real(args, cfg):
         raise SystemExit('No background.png: run calibrate_arena.py first')
     perception = Perception(cfg, background)
     planner = Planner(cfg)
+    run_dir = Path(args.log_dir) / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:6])
+    run_dir.mkdir(parents=True)
+    (run_dir / 'config.json').write_text(json.dumps(cfg, indent=2), encoding='utf-8')
     cap = cv2.VideoCapture(args.camera if args.camera is not None else cfg.get('camera_index', 0))
     if not cap.isOpened():
         raise SystemExit('Cannot open camera')
@@ -509,42 +615,73 @@ def run_real(args, cfg):
     apply_camera_properties(cap, cfg)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     reader = LatestFrame(cap)
-    link = Link(args.esp_ip, args.port)
-    sender = DriveSender(link)
+    dry_run = getattr(args, 'dry_run', False)
+    link = None if dry_run else Link(args.esp_ip, args.port)
+    sender = None if dry_run else DriveSender(link)
     per_px = float(cfg['arena'].get('mm_per_px', 2))
-    link.send('start')
+    last_print = 0.0
+    print('Config:', args.config.resolve())
+    print('Dry run (no robot commands).' if dry_run else 'Real robot control enabled.')
+    print('Diagnostics:', run_dir / 'trace.jsonl')
     try:
-        while True:
-            ok, raw = reader.read()
-            if not ok:
-                break
-            now = time.monotonic()
-            link.poll()
-            snap = perception.step(raw, now)
-            status = link.status if link.status_age() < 1.0 else None
-            l, r, events = planner.step(now, snap.pose, snap.targets, snap.observations, status)
-            for cmd, fields in events:
-                link.send(cmd, **fields)
-            sender.set(l, r)
-            if not args.headless:
-                frame = draw_robot(snap.frame, snap, per_px)
-                if planner.lock.target:
-                    t = planner.lock.target
-                    cv2.circle(frame, (round(t['x'] / per_px), round(t['y'] / per_px)), 14, (0, 0, 255), 2)
-                state = status['state'] if status else 'NO LINK'
-                cv2.putText(frame, f'{state}  {planner.state}  placed {planner.placed}  {snap.status}',
-                            (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 0, 255), 2)
-                if warning:
-                    cv2.putText(frame, 'grip/axle offset not calibrated', (10, 50), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 0, 255), 2)
-                cv2.imshow('autonomy', frame)
-                if (cv2.waitKey(1) & 255) in (ord('q'), 27, ord('x')):
+        with (run_dir / 'trace.jsonl').open('w', encoding='utf-8') as trace:
+            if sender:
+                sender.event('start')
+            while True:
+                ok, raw = reader.read()
+                if not ok:
                     break
-            if status and status.get('state') == 'IDLE' and status.get('why') == 'remote stop':
-                break
+                now = time.monotonic()
+                if link:
+                    link.poll()
+                snap = perception.step(raw, now)
+                decision_t = time.monotonic()
+                status = link.status if link and link.status_age() < 1.0 else None
+                l, r, events = planner.step(decision_t, snap.pose, snap.targets, snap.observations, status,
+                                            perception_status=snap.status, require_status=not dry_run)
+                if sender:
+                    sender.set(l, r)
+                    for cmd, fields in events:
+                        sender.event(cmd, **fields)
+                info = dict(planner.debug, t=decision_t, dry_run=dry_run, events=events,
+                            frame_ms=(decision_t-now)*1000,
+                            firmware=status, pose=snap.pose.as_dict() if snap.pose else None,
+                            tag_reason=perception.pose_est.last_reason if perception.pose_est else 'not configured')
+                trace.write(json.dumps(info) + '\n')
+                if decision_t-last_print >= .5:
+                    print(diagnostic_text(info), flush=True)
+                    trace.flush()
+                    last_print = decision_t
+                if not args.headless:
+                    import numpy as np
+                    frame = draw_robot(snap.frame, snap, per_px)
+                    if planner.lock.target:
+                        t = planner.lock.target
+                        cv2.circle(frame, (round(t['x'] / per_px), round(t['y'] / per_px)), 14, (0, 0, 255), 2)
+                    if info.get('goal_x_mm') is not None:
+                        goal = (round(info['goal_x_mm']/per_px), round(info['goal_y_mm']/per_px))
+                        cv2.drawMarker(frame, goal, (0, 165, 255), cv2.MARKER_CROSS, 20, 2)
+                    h, w = frame.shape[:2]
+                    canvas = np.full((h+116, max(w, 1000), 3), 25, np.uint8)
+                    canvas[:h, :w] = frame
+                    state = 'DRY RUN' if dry_run else status.get('state', '?') if status else 'NO LINK'
+                    lines = [f'{state} | vision={snap.status} | placed={planner.placed}', diagnostic_text(info),
+                             f"frame={info['frame_ms']:.0f}ms | tag={info['tag_reason']} | orange cross=drive goal | q/x/ESC stop"]
+                    if warning:
+                        lines.append('grip/axle offset not calibrated')
+                    for i, line in enumerate(lines):
+                        cv2.putText(canvas, line, (10, h+22+i*25), 0, .45, (240, 240, 240), 1)
+                    cv2.imshow('autonomy', canvas)
+                    if (cv2.waitKey(1) & 255) in (ord('q'), 27, ord('x')):
+                        break
+                if status and status.get('state') == 'IDLE' and status.get('why') == 'remote stop':
+                    break
     finally:
-        sender.stop()
-        link.send('drive', l=0, r=0)
-        link.send('stop')
+        if sender:
+            sender.stop()
+            link.send('drive', l=0, r=0)
+            link.send('stop')
+            link.sock.close()
         reader.stop()
         cap.release()
         cv2.destroyAllWindows()
@@ -558,6 +695,9 @@ def main():
     p.add_argument('--camera', type=int)
     p.add_argument('--config', type=Path, default=Path(__file__).with_name('calib.json'))
     p.add_argument('--headless', action='store_true')
+    p.add_argument('--dry-run', action='store_true', help='Live camera/planner preview, no UDP or robot commands')
+    p.add_argument('--check-config', action='store_true', help='Check calibration files without camera or robot')
+    p.add_argument('--log-dir', type=Path, default=Path('runs/autonomy'), help='Config and per-frame decision logs')
     p.add_argument('--sim', action='store_true', help='simulated robot and field')
     p.add_argument('--scenario', choices=['pile', 'scattered'], default='pile')
     p.add_argument('--show', action='store_true', help='draw the simulation')
@@ -565,7 +705,16 @@ def main():
     p.add_argument('--seed', type=int, default=0)
     p.add_argument('--noise', action='store_true', help='sim: pose noise, dropped frames, latency, failed grabs')
     args = p.parse_args()
-    cfg = json.loads(args.config.read_text())
+    if not args.config.is_file():
+        p.error(f'Config not found: {args.config}. Pass --config with your actual calibrated JSON file.')
+    cfg = json.loads(args.config.read_text(encoding='utf-8'))
+    if args.check_config:
+        problems = setup_problems(cfg, args.config)
+        print('Config:', args.config.resolve())
+        if problems:
+            raise SystemExit('Not ready:\n- ' + '\n- '.join(problems))
+        print('Required configuration and background file present; field alignment still needs a live check.')
+        return
     if args.sim:
         params = ({'pose_noise_mm': 4, 'heading_noise_deg': 1.5, 'tag_dropout': 0.1,
                    'latency_s': 0.12, 'grip_success': 0.85} if args.noise else None)
@@ -576,8 +725,8 @@ def main():
         print(f"correct {result['correct']}  wrong {result['wrong']}  in {result['time_s']} s "
               f"-> score {5 * result['correct'] - result['wrong']}")
         return
-    if not args.esp_ip:
-        p.error('esp_ip required (or use --sim)')
+    if not args.esp_ip and not args.dry_run:
+        p.error('esp_ip required (or use --sim / --dry-run)')
     run_real(args, cfg)
 
 

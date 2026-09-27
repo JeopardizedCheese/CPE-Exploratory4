@@ -1,5 +1,25 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-09-28: autonomy stage movement fix
+
+**EN**
+- Fixed forward steering near GOTO_STAGE so the planner doesn't reverse one wheel while trying to advance.
+- If the gripper is already close to a stone, proceed to ALIGN and APPROACH instead of turning back toward a staging point behind the robot.
+- Preserve one target while it's inside the configured robot footprint; return to SEARCH before selecting a new target and its approach direction.
+- Show the stop reason, target lock state, stage distance, heading error and wheel command; save a per-frame trace and the runtime config under `runs/autonomy/<time>/`.
+- Add `--check-config` and `--dry-run`; reject missing runtime calibration before real autonomy starts.
+- Add 11 autonomy regressions. The root suite now contains 84 tests; simulation is not hardware validation.
+- See [AUTONOMY_FIX_TH.md](AUTONOMY_FIX_TH.md) for symptoms, deployment and diagnostic steps.
+
+**TH**
+- แก้การเลี้ยวใกล้ GOTO_STAGE ให้ล้อทั้งสองข้างยังเดินหน้า แทนการกลับทิศล้อข้างหนึ่ง
+- ถ้าปากคีบอยู่ใกล้หินแล้ว ให้เข้า ALIGN และ APPROACH แทนการหันกลับไปจุดเตรียมที่อยู่ด้านหลัง
+- ล็อกเป้าหมายเดิมขณะหินอยู่ในกรอบตัวหุ่น เมื่อเป้าหมายหาย ให้กลับ SEARCH ก่อนเลือกหินและทิศทางเข้าใหม่
+- แสดงเหตุผลที่หยุด, target lock, ระยะถึงจุดเตรียม, มุมคลาดและคำสั่งล้อ พร้อมบันทึก trace ทุกเฟรมและ config ที่ใช้งานไว้ใน `runs/autonomy/<time>/`
+- เพิ่ม `--check-config` และ `--dry-run`; ตรวจ calibration ที่ขาดก่อนเริ่มโหมดหุ่นจริง
+- เพิ่ม regression tests ของ autonomy 11 ข้อ รวมเป็น 84 tests; ผล simulation ไม่ใช่การทดสอบหุ่นจริง
+- อ่าน [AUTONOMY_FIX_TH.md](AUTONOMY_FIX_TH.md) สำหรับวิธีอัปเดตและอ่านอาการ
+
 ## 2026-09-28: merge of the color-first update
 
 **EN**
@@ -8,7 +28,7 @@
 - `vision.py`: the stone size check is a setting again (`vision.size_check`, off in `field/calib.json`); `--debug` prints `hsv_median` again.
 - `field/calib.json`: measured values ported (tag height 185, grip offset [270, 0], footprint front 300, `autonomy` grip 0/40, pile mode on). Camera 1810 mm at [1100, 600] kept from the update.
 - `secrets.example.h` placeholders restored (it contained the real hotspot password).
-- 73 tests pass; gesture tests pass; `firmware_check.py` 15/15 on the fake robot.
+- At the color-first merge: 73 root tests pass; gesture tests pass; `firmware_check.py` 15/15 on the fake robot. The later autonomy fix raises the root suite to 84 tests.
 
 **TH**
 - เก็บจาก color-first: เครื่องมือเก็บตัวอย่างสีแบบใหม่ (วัดขอบบนและล่างของ S/V), `color_preview.py`, `reference_guard.py` (ตรวจว่ากล้องหรือสนามขยับ), `camera_io.py`, ป้ายสีวงแบบกำหนดเอง, โปรไฟล์ `field/calib.json` และเทสต์
