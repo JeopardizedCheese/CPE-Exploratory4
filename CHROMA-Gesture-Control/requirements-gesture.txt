@@ -1,0 +1,4 @@
+# Separate environment: do not replace the arena vision dependencies.
+mediapipe==0.10.32
+opencv-contrib-python==4.13.0.92
+scikit-learn==1.7.2

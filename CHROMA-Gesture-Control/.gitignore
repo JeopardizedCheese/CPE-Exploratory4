@@ -1,0 +1,3 @@
+.venv-gesture/
+__pycache__/
+*.pyc

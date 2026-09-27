@@ -1,0 +1,146 @@
+{
+  "range_overlaps": [
+    {
+      "classes": [
+        2,
+        5
+      ],
+      "names": [
+        "cyan",
+        "skyblue"
+      ],
+      "ranges": [
+        {
+          "lo": [
+            78,
+            71,
+            98
+          ],
+          "hi": [
+            101,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "classes": [
+        3,
+        4
+      ],
+      "names": [
+        "crimson",
+        "orange"
+      ],
+      "ranges": [
+        {
+          "lo": [
+            2,
+            105,
+            122
+          ],
+          "hi": [
+            15,
+            255,
+            255
+          ]
+        }
+      ]
+    }
+  ],
+  "missing_colors": [],
+  "has_background": true,
+  "has_corners": true,
+  "foreground_fraction": 0.14419637247099235,
+  "brightness_offset": [
+    28.0,
+    14.0,
+    21.0
+  ],
+  "reference": {
+    "status": "moved",
+    "reference_markers": 6,
+    "matched": 6,
+    "shifts": [
+      {
+        "reference_px": [
+          476.1976623535156,
+          66.98255920410156
+        ],
+        "current_px": [
+          473.0482177734375,
+          91.9039077758789
+        ],
+        "distance_px": 25.119566393531002,
+        "distance_mm": 75.358699180593
+      },
+      {
+        "reference_px": [
+          73.28331756591797,
+          404.038818359375
+        ],
+        "current_px": [
+          74.49506378173828,
+          432.3201599121094
+        ],
+        "distance_px": 28.307288971464132,
+        "distance_mm": 84.9218669143924
+      },
+      {
+        "reference_px": [
+          298.5843505859375,
+          473.142578125
+        ],
+        "current_px": [
+          297.600830078125,
+          501.600830078125
+        ],
+        "distance_px": 28.47524217310242,
+        "distance_mm": 85.42572651930726
+      },
+      {
+        "reference_px": [
+          74.5,
+          182.0
+        ],
+        "current_px": [
+          72.4424057006836,
+          212.3848114013672
+        ],
+        "distance_px": 30.45439965254992,
+        "distance_mm": 91.36319895764976
+      },
+      {
+        "reference_px": [
+          503.7372741699219,
+          452.5884704589844
+        ],
+        "current_px": [
+          496.50958251953125,
+          500.2412109375
+        ],
+        "distance_px": 48.19775100257156,
+        "distance_mm": 144.59325300771468
+      },
+      {
+        "reference_px": [
+          237.0,
+          90.5
+        ],
+        "current_px": [
+          188.3682098388672,
+          84.95994567871094
+        ],
+        "distance_px": 48.94632995597615,
+        "distance_mm": 146.83898986792843
+      }
+    ],
+    "median_shift_mm": 88.39446273847851,
+    "max_shift_mm": 146.83898986792843
+  },
+  "status": "reference_moved",
+  "observations": 131,
+  "known_colors": 1,
+  "targets": 0
+}

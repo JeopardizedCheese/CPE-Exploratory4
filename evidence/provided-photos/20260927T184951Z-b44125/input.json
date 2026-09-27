@@ -1,0 +1,6 @@
+{
+  "image": "examples\\image.png",
+  "video": null,
+  "background": "examples\\image1.png",
+  "config": "calib.json"
+}

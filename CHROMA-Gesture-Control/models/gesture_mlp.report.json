@@ -1,0 +1,1370 @@
+{
+  "created_utc": "2026-09-25T15:12:19.132724+00:00",
+  "feature_version": "wrist-relative-palm-scale-mirrored-xyz-v1",
+  "sklearn_version": "1.7.2",
+  "hidden_layers": [
+    64,
+    32
+  ],
+  "seed": 42,
+  "threshold": 0.9,
+  "margin": 0.2,
+  "scores_are_calibrated_probabilities": false,
+  "hardware_validated": false,
+  "training_iterations": 197,
+  "training_loss": 0.010956976136199004,
+  "warnings": [],
+  "sessions": {
+    "20260925-213106-c283c1ae": {
+      "OPEN": 60,
+      "FIST": 60,
+      "V": 60,
+      "ONE": 60,
+      "THREE": 60,
+      "THUMB_UP": 60,
+      "THUMB_DOWN": 60,
+      "UNKNOWN": 60
+    },
+    "20260925-214408-02df1ef6": {
+      "OPEN": 60,
+      "FIST": 60,
+      "V": 60,
+      "ONE": 60,
+      "THREE": 60,
+      "THUMB_UP": 60,
+      "THUMB_DOWN": 60,
+      "UNKNOWN": 60
+    },
+    "20260925-215349-18663bab": {
+      "OPEN": 60,
+      "FIST": 60,
+      "V": 60,
+      "ONE": 60,
+      "THREE": 60,
+      "THUMB_UP": 60,
+      "THUMB_DOWN": 60,
+      "UNKNOWN": 60
+    },
+    "20260925-215954-039015a4": {
+      "OPEN": 60,
+      "FIST": 60,
+      "V": 60,
+      "ONE": 60,
+      "THREE": 60,
+      "THUMB_UP": 60,
+      "THUMB_DOWN": 60,
+      "UNKNOWN": 60
+    },
+    "20260925-220633-9088757b": {
+      "OPEN": 60,
+      "FIST": 60,
+      "V": 60,
+      "ONE": 60,
+      "THREE": 60,
+      "THUMB_UP": 60,
+      "THUMB_DOWN": 60,
+      "UNKNOWN": 60
+    }
+  },
+  "recordings": [
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/FIST_2bc870b290ca.npz",
+      "sha256": "99693e27f814093e7ac189f5361b383930ccf22ef83b9ffc9dcc54d78b431b4e",
+      "label": "FIST",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/ONE_750953d97d88.npz",
+      "sha256": "90e624fc4dc190ea1d12868d78108f6e695dc3d761c3c20cc0dc88408ca7275e",
+      "label": "ONE",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/OPEN_101572710f37.npz",
+      "sha256": "5d25845f465cef2a488558603ce2c89ac89e3f36d8afc2a8375c994afbf0c5d4",
+      "label": "OPEN",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/THREE_4e41f85e8961.npz",
+      "sha256": "8a58dfc44c19f5e7741c799b7e603cd443c1dc4ab3e015b0d4766eafd3337a28",
+      "label": "THREE",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/THUMB_DOWN_badd94d93d0c.npz",
+      "sha256": "fd5a6122c49cabdc46c961350a6b035780819a38f927cf7c5b608713179a9eed",
+      "label": "THUMB_DOWN",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/THUMB_UP_2a6b026d6a37.npz",
+      "sha256": "943910e62492cd6b793f7ecf86b5c07a5d7f224d39c96e8cd6e64edaccecf0ec",
+      "label": "THUMB_UP",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/UNKNOWN_11b434bc4ec2.npz",
+      "sha256": "d112d02add6e5d4d818050724c872b407a9730c0f3d4b3d513ad1fdc005dd052",
+      "label": "UNKNOWN",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-213106-c283c1ae/V_75b173b0fa46.npz",
+      "sha256": "b5d9df8820d0248bf4be490249899a46af4eef836ebd3884f676472a7b8ce8cd",
+      "label": "V",
+      "session": "20260925-213106-c283c1ae",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/FIST_8365f4e4daf7.npz",
+      "sha256": "a37b45569a3a9f0beb470b7e5226f0c6b467f275b796584a4688bcd87919d451",
+      "label": "FIST",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/ONE_98fb9946c878.npz",
+      "sha256": "33622695ca1783f50c615ddacc0de5907eceb93929110db8c2d12e08cdfc1e16",
+      "label": "ONE",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/OPEN_1ca5843e1e1a.npz",
+      "sha256": "399267b3d144e8f3963ac01eb0127eacea420ce190a7749a00ecb195fd261a00",
+      "label": "OPEN",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/THREE_85e3af1b7ffa.npz",
+      "sha256": "4b4c0df9e444b621978a07e6857aa8f3cf9b621f5c39ec08089b0640c1645dcc",
+      "label": "THREE",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/THUMB_DOWN_ba945a39bb14.npz",
+      "sha256": "0c01e41d9b2e5ec9936db7f37ccadf3eadbf99f4a2ddb7f4ab47fe9803dd64bd",
+      "label": "THUMB_DOWN",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/THUMB_UP_be9fd59bfe7e.npz",
+      "sha256": "955774ea23fe381e7a96723ce520ed39c06e1d613d3d8b719353968957ff9f09",
+      "label": "THUMB_UP",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/UNKNOWN_07155cac595e.npz",
+      "sha256": "7148a25da1c79f148ac40e872ba49610fd98ebbc5288b3fe2ad6005b9358c58a",
+      "label": "UNKNOWN",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-214408-02df1ef6/V_fb5f0ff9e2da.npz",
+      "sha256": "c9438a51a01d662f5c0e157e024df54b29de876f771188569ab353f7c96ca405",
+      "label": "V",
+      "session": "20260925-214408-02df1ef6",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/FIST_0b4eefa24da4.npz",
+      "sha256": "edf01b3da2ed59e2b87ff2df7d87c8a6af2ecfa2850b7764511344788fcacf07",
+      "label": "FIST",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/ONE_9270773e85c3.npz",
+      "sha256": "9c97bcafee88fb36e2adb3a3fb5079cf80fffde22ec72b7099f9f068e6df0783",
+      "label": "ONE",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/OPEN_2363e9747320.npz",
+      "sha256": "e6c461ac227e03c122807c8729c74d4fc870e31b3efc5792465671f0fb40a4a7",
+      "label": "OPEN",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/THREE_ff382e4b3e58.npz",
+      "sha256": "542a0aa0ce404c8139a41b4e358e011d7c205410d4719bfd9340f620cde6664f",
+      "label": "THREE",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/THUMB_DOWN_c2aef86c599e.npz",
+      "sha256": "0db048ce311da9dae01ddd76bb918e106d8682f617d2e411e7d5d509ec0c9718",
+      "label": "THUMB_DOWN",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/THUMB_UP_ea727294fedb.npz",
+      "sha256": "9bae70f2872d04027f62d6315ce158da43c2209790e3cbb1cd570d1831f64157",
+      "label": "THUMB_UP",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/UNKNOWN_b998a0a749d7.npz",
+      "sha256": "2362505a48f78b403f59915e0a36ae005c8afaa0157882e8d44d0691d4f00a53",
+      "label": "UNKNOWN",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215349-18663bab/V_9dd81c1734f5.npz",
+      "sha256": "8ca9319684414153c9b3fee6698ab2ff7769144cfa29757b50d820188e580655",
+      "label": "V",
+      "session": "20260925-215349-18663bab",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/FIST_d28a5b5b8edf.npz",
+      "sha256": "1b13fd40979b35254e072342f3314a13948782a1ada89334a56fe1f3fe2db765",
+      "label": "FIST",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/ONE_030d27fa4410.npz",
+      "sha256": "d2ad7f3ddf32e42fa0064f12e482c059d518ee12ef88703e43ceb8eb98beb22a",
+      "label": "ONE",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/OPEN_e21b0906468d.npz",
+      "sha256": "0fe5fa85e2c87cd8bb1a23a33367d4f452e8d1c671bf948dcde1dd2c110ffc97",
+      "label": "OPEN",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/THREE_d0bcc5cb20d1.npz",
+      "sha256": "8d2195d7886cc35bb9e8c297f1f6a8b1472a84f251d5ae0dccd15170e338a764",
+      "label": "THREE",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/THUMB_DOWN_fe6f42f74916.npz",
+      "sha256": "ebfb3b07bb30cfc48c42a4a7960f8f8dcf82d0569de3bd4f86e684ce143fdcd3",
+      "label": "THUMB_DOWN",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/THUMB_UP_f3327b2fb720.npz",
+      "sha256": "1ab4a80b08e93fec298f4b24eb7821f386abab472bc6e72bd2e64d1538399c21",
+      "label": "THUMB_UP",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/UNKNOWN_f990f6a5ed43.npz",
+      "sha256": "dde1f2122e430140c480559b8a5dd846c3cb4326f982c63202d295e21cea5164",
+      "label": "UNKNOWN",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-215954-039015a4/V_71f799d5fcb3.npz",
+      "sha256": "9a8fa8c3bd5ce2ab79987d29ff45a9fac7102ea5d891da1dd7b3f33851ff203c",
+      "label": "V",
+      "session": "20260925-215954-039015a4",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/FIST_421dda685d5c.npz",
+      "sha256": "de9ce5eaa18ee96f649ea873445b166314b87265980ff91a45d8f7ffb3fdc896",
+      "label": "FIST",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/ONE_68232a35d1c0.npz",
+      "sha256": "dc78ac63713f626bd3ab180320c7dd9169fbb46fde18058ad9c6ac94d554040c",
+      "label": "ONE",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/OPEN_8893bd5c8c93.npz",
+      "sha256": "af40a3c25b7becf5bc553fcb3ca2d4de86632fd2106c4072e30e42c25b989fe8",
+      "label": "OPEN",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/THREE_1c7d339e3929.npz",
+      "sha256": "5755bb0ecda37a3128d26441c3314aef609782ed92ec9b0b44bcb55a975318ee",
+      "label": "THREE",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/THUMB_DOWN_cf7b38303c26.npz",
+      "sha256": "e23e3aacb5ebb32937e6a96d044e1219ce63a1b3fc461f70e56607146bc692ee",
+      "label": "THUMB_DOWN",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/THUMB_UP_e3f915a29f6f.npz",
+      "sha256": "2876b6753b5c3c92bfba9f9ad509d4ca8053befd7d0be7ada78e66dc72e84543",
+      "label": "THUMB_UP",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/UNKNOWN_eae846f4dfce.npz",
+      "sha256": "4749044da151d942af9e2860421ba0a19c4c4dc45f75228e4f711f4a1aa336ba",
+      "label": "UNKNOWN",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    },
+    {
+      "path": "/home/jeopardizedcheese/Projects/CPE-Explo/gemBotV3/CPE-Exploratory2-main/CHROMA-Gesture-Control/gesture_data/20260925-220633-9088757b/V_3e14ec13c38a.npz",
+      "sha256": "79e7aeddcbbf2a3f5420708890e396ad4c5f84b97c84c238e62e1cfcf6a1ec00",
+      "label": "V",
+      "session": "20260925-220633-9088757b",
+      "samples": 60
+    }
+  ],
+  "splits": {
+    "train": {
+      "sessions": [
+        "20260925-213106-c283c1ae",
+        "20260925-214408-02df1ef6",
+        "20260925-215954-039015a4"
+      ],
+      "raw_classifier": {
+        "samples": 1440,
+        "accuracy": 0.9993055555555556,
+        "unknown_output_rate": 0.12569444444444444,
+        "wrong_active_commands": 0,
+        "wrong_active_rate": 0.0,
+        "correct_active_recall": 0.9990740740740741,
+        "unknown_to_active_rate": 0.0,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            180,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            180,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            180,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            180,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            180,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            180,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            179,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            180
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 1.0,
+          "V": 1.0,
+          "ONE": 1.0,
+          "THREE": 1.0,
+          "THUMB_UP": 1.0,
+          "THUMB_DOWN": 0.9944444444444445,
+          "UNKNOWN": 1.0
+        }
+      },
+      "with_rejection": {
+        "samples": 1440,
+        "accuracy": 0.9944444444444445,
+        "unknown_output_rate": 0.13055555555555556,
+        "wrong_active_commands": 0,
+        "wrong_active_rate": 0.0,
+        "correct_active_recall": 0.9935185185185185,
+        "unknown_to_active_rate": 0.0,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            180,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            179,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0,
+            179,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            180,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            178,
+            0,
+            0,
+            2
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            179,
+            0,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            177,
+            3
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            180
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 0.9944444444444445,
+          "V": 0.9944444444444445,
+          "ONE": 1.0,
+          "THREE": 0.9888888888888889,
+          "THUMB_UP": 0.9944444444444445,
+          "THUMB_DOWN": 0.9833333333333333,
+          "UNKNOWN": 1.0
+        }
+      },
+      "original_rules": {
+        "samples": 1440,
+        "accuracy": 0.7402777777777778,
+        "unknown_output_rate": 0.05347222222222222,
+        "wrong_active_commands": 170,
+        "wrong_active_rate": 0.11805555555555555,
+        "correct_active_recall": 0.7601851851851852,
+        "unknown_to_active_rate": 0.55,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            180,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            170,
+            0,
+            0,
+            0,
+            10,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            180,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            180,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            7,
+            0,
+            172,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            116,
+            0,
+            0,
+            0,
+            64,
+            0,
+            0
+          ],
+          [
+            44,
+            80,
+            1,
+            0,
+            8,
+            0,
+            45,
+            2
+          ],
+          [
+            72,
+            6,
+            4,
+            9,
+            4,
+            10,
+            0,
+            75
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 0.9444444444444444,
+          "V": 1.0,
+          "ONE": 1.0,
+          "THREE": 0.9555555555555556,
+          "THUMB_UP": 0.35555555555555557,
+          "THUMB_DOWN": 0.25,
+          "UNKNOWN": 0.4166666666666667
+        }
+      }
+    },
+    "validation": {
+      "sessions": [
+        "20260925-220633-9088757b"
+      ],
+      "raw_classifier": {
+        "samples": 480,
+        "accuracy": 0.98125,
+        "unknown_output_rate": 0.11666666666666667,
+        "wrong_active_commands": 9,
+        "wrong_active_rate": 0.01875,
+        "correct_active_recall": 0.9861111111111112,
+        "unknown_to_active_rate": 0.06666666666666667,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            55,
+            0,
+            4,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            60,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            60,
+            0
+          ],
+          [
+            4,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            56
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 1.0,
+          "V": 1.0,
+          "ONE": 1.0,
+          "THREE": 0.9166666666666666,
+          "THUMB_UP": 1.0,
+          "THUMB_DOWN": 1.0,
+          "UNKNOWN": 0.9333333333333333
+        }
+      },
+      "with_rejection": {
+        "samples": 480,
+        "accuracy": 0.98125,
+        "unknown_output_rate": 0.13958333333333334,
+        "wrong_active_commands": 1,
+        "wrong_active_rate": 0.0020833333333333333,
+        "correct_active_recall": 0.9777777777777777,
+        "unknown_to_active_rate": 0.016666666666666666,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            58,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2
+          ],
+          [
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            54,
+            0,
+            0,
+            6
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            60,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            60,
+            0
+          ],
+          [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            59
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 0.9666666666666667,
+          "FIST": 1.0,
+          "V": 1.0,
+          "ONE": 1.0,
+          "THREE": 0.9,
+          "THUMB_UP": 1.0,
+          "THUMB_DOWN": 1.0,
+          "UNKNOWN": 0.9833333333333333
+        }
+      },
+      "original_rules": {
+        "samples": 480,
+        "accuracy": 0.6645833333333333,
+        "unknown_output_rate": 0.020833333333333332,
+        "wrong_active_commands": 54,
+        "wrong_active_rate": 0.1125,
+        "correct_active_recall": 0.7,
+        "unknown_to_active_rate": 0.8333333333333334,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            57,
+            0,
+            0,
+            0,
+            3,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            59,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            47,
+            0,
+            0,
+            0,
+            0,
+            13,
+            0
+          ],
+          [
+            40,
+            0,
+            4,
+            2,
+            4,
+            0,
+            0,
+            10
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 0.95,
+          "V": 1.0,
+          "ONE": 1.0,
+          "THREE": 0.9833333333333333,
+          "THUMB_UP": 0.0,
+          "THUMB_DOWN": 0.21666666666666667,
+          "UNKNOWN": 0.16666666666666666
+        }
+      }
+    },
+    "test": {
+      "sessions": [
+        "20260925-215349-18663bab"
+      ],
+      "raw_classifier": {
+        "samples": 480,
+        "accuracy": 0.9625,
+        "unknown_output_rate": 0.13333333333333333,
+        "wrong_active_commands": 6,
+        "wrong_active_rate": 0.0125,
+        "correct_active_recall": 0.9722222222222222,
+        "unknown_to_active_rate": 0.03333333333333333,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            54,
+            0,
+            0,
+            0,
+            1,
+            0,
+            5
+          ],
+          [
+            0,
+            0,
+            59,
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            2,
+            0,
+            58,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            6,
+            0,
+            0,
+            0,
+            54,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            59,
+            1
+          ],
+          [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            58
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 0.9,
+          "V": 0.9833333333333333,
+          "ONE": 1.0,
+          "THREE": 0.9666666666666667,
+          "THUMB_UP": 0.9,
+          "THUMB_DOWN": 0.9833333333333333,
+          "UNKNOWN": 0.9666666666666667
+        }
+      },
+      "with_rejection": {
+        "samples": 480,
+        "accuracy": 0.9270833333333334,
+        "unknown_output_rate": 0.18541666666666667,
+        "wrong_active_commands": 2,
+        "wrong_active_rate": 0.004166666666666667,
+        "correct_active_recall": 0.925,
+        "unknown_to_active_rate": 0.0,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            59,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            52,
+            0,
+            0,
+            0,
+            0,
+            0,
+            8
+          ],
+          [
+            0,
+            0,
+            57,
+            0,
+            0,
+            0,
+            0,
+            3
+          ],
+          [
+            0,
+            0,
+            0,
+            58,
+            0,
+            0,
+            0,
+            2
+          ],
+          [
+            0,
+            0,
+            2,
+            0,
+            52,
+            0,
+            0,
+            6
+          ],
+          [
+            0,
+            4,
+            0,
+            0,
+            0,
+            48,
+            0,
+            8
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            59,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            60
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 0.9833333333333333,
+          "FIST": 0.8666666666666667,
+          "V": 0.95,
+          "ONE": 0.9666666666666667,
+          "THREE": 0.8666666666666667,
+          "THUMB_UP": 0.8,
+          "THUMB_DOWN": 0.9833333333333333,
+          "UNKNOWN": 1.0
+        }
+      },
+      "original_rules": {
+        "samples": 480,
+        "accuracy": 0.7791666666666667,
+        "unknown_output_rate": 0.0625,
+        "wrong_active_commands": 32,
+        "wrong_active_rate": 0.06666666666666667,
+        "correct_active_recall": 0.7972222222222223,
+        "unknown_to_active_rate": 0.43333333333333335,
+        "confusion_labels": [
+          "OPEN",
+          "FIST",
+          "V",
+          "ONE",
+          "THREE",
+          "THUMB_UP",
+          "THUMB_DOWN",
+          "UNKNOWN"
+        ],
+        "confusion_rows_truth_columns_prediction": [
+          [
+            60,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            57,
+            0,
+            0,
+            0,
+            3,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            60,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            3,
+            0,
+            57,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            44,
+            0,
+            0,
+            0,
+            16,
+            0,
+            0
+          ],
+          [
+            0,
+            26,
+            0,
+            0,
+            0,
+            0,
+            34,
+            0
+          ],
+          [
+            4,
+            4,
+            4,
+            7,
+            6,
+            5,
+            0,
+            30
+          ]
+        ],
+        "per_class_recall": {
+          "OPEN": 1.0,
+          "FIST": 0.95,
+          "V": 1.0,
+          "ONE": 1.0,
+          "THREE": 0.95,
+          "THUMB_UP": 0.26666666666666666,
+          "THUMB_DOWN": 0.5666666666666667,
+          "UNKNOWN": 0.5
+        }
+      }
+    }
+  },
+  "interpretation": "Frame-level results on held-out sessions, not robot success rates. UNKNOWN includes modeled other gestures and rejected predictions. No-hand/multiple-hand loss is handled outside the classifier. Choose thresholds on validation only; if you tune after viewing test results, collect another untouched test session. No claim of superiority until evaluated on real data."
+}
