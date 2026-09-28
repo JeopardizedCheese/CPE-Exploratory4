@@ -34,6 +34,30 @@ class ReferenceTests(unittest.TestCase):
         bg = field(False)
         self.assertEqual(ReferenceGuard(self.config(), bg).check(np.full_like(bg, 180))['status'], 'unverified')
 
+    def test_verdict_must_last_hold_s_before_it_counts(self):
+        cfg = self.config()
+        cfg['vision']['reference_guard']['hold_s'] = 2.0
+        bg = field(False)
+        moved = cv2.warpAffine(bg, np.float32([[1, 0, 8], [0, 1, 6]]), (bg.shape[1], bg.shape[0]))
+        guard = ReferenceGuard(cfg, bg)
+        first = guard.check(moved, now=10.0)
+        self.assertEqual((first['status'], first['pending']), ('ok', 'moved'))
+        self.assertEqual(guard.check(moved, now=11.9)['status'], 'ok')
+        self.assertEqual(guard.check(moved, now=12.1)['status'], 'moved')
+        # one good frame resets the timer
+        self.assertEqual(guard.check(bg, now=12.2)['status'], 'ok')
+        self.assertEqual(guard.check(moved, now=13.0)['status'], 'ok')
+
+    def test_field_profile_ignores_small_jitter(self):
+        # field values: 25 mm limit; at 2 mm/px a 10 px (20 mm) shift is jitter, 15 px (30 mm) is not
+        cfg = self.config()
+        cfg['vision']['reference_guard'].update(max_shift_mm=25, min_markers=2)
+        bg = field(False)
+        guard = ReferenceGuard(cfg, bg)
+        shift = lambda px: cv2.warpAffine(bg, np.float32([[1, 0, px], [0, 1, 0]]), (bg.shape[1], bg.shape[0]))
+        self.assertEqual(guard.check(shift(10))['status'], 'ok')
+        self.assertEqual(guard.check(shift(15))['status'], 'moved')
+
     def test_reference_change_revokes_sticky_targets(self):
         cfg = self.config()
         cfg['vision']['sticky_frames'] = 5

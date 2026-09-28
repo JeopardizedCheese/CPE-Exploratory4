@@ -3,6 +3,8 @@
 This detects changes; it does not realign frames or repair localization. Occluded
 or missing circles produce 'unverified', never proof that calibration is valid.
 """
+import time
+
 import numpy as np
 from find_zones import find_zones
 
@@ -14,10 +16,28 @@ class ReferenceGuard:
         self.enabled = self.options.get('enabled', False)
         self.scale = float(cfg.get('arena', {}).get('mm_per_px', 2))
         self.reference = []
+        self.bad_since = None
         if self.enabled and background is not None:
             self.reference, _ = find_zones(background, cfg, classify_colors=False)
 
-    def check(self, frame):
+    def check(self, frame, now=None):
+        """A 'moved'/'unverified' verdict is reported only once it has lasted
+        reference_guard.hold_s (default 0: at once). Until then status stays 'ok'
+        and 'pending' carries the raw verdict, so a hand or one noisy frame does
+        not stop the robot."""
+        result = self._check_once(frame)
+        hold = float(self.options.get('hold_s', 0))
+        if result['status'] not in ('moved', 'unverified'):
+            self.bad_since = None
+            return result
+        now = time.monotonic() if now is None else now
+        if self.bad_since is None:
+            self.bad_since = now
+        if now - self.bad_since < hold:
+            result['pending'], result['status'] = result['status'], 'ok'
+        return result
+
+    def _check_once(self, frame):
         result = {'status': 'disabled', 'reference_markers': len(self.reference), 'matched': 0, 'shifts': []}
         if not self.enabled:
             return result

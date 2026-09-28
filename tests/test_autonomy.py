@@ -93,6 +93,92 @@ class Safety(unittest.TestCase):
         self.assertIn('calibrate_grip.py', autonomy.grip_calibration_warning(cfg))
 
 
+class JawStone(unittest.TestCase):
+    def heading_to_stage(self):
+        p = Planner(config())
+        far = {'color': 1, 'x': 400.0, 'y': 600.0, 'confidence': 1}
+        p.lock.target, p.lock.last_seen = dict(far), 0.0
+        p.state, p.since, p.heading = 'GOTO_STAGE', 0.0, math.pi   # stage point is behind the robot
+        return p, far
+
+    def test_stone_in_jaws_is_gripped_instead_of_driving_to_the_stage(self):
+        p, far = self.heading_to_stage()
+        robot = pose(1000, 600, 0)                                 # grip point at (1120, 600)
+        in_jaws = {'color': 2, 'x': 1123.0, 'y': 604.0}           # not a target: never isolated
+        _, _, events = p.step(0.1, robot, [far], [in_jaws, far])
+        self.assertEqual(p.state, 'GRIP')
+        self.assertIn(('grip', {'p': 'close'}), events)
+        self.assertEqual(p.carrying, 2)
+        self.assertEqual(p.pick_pos, (1123.0, 604.0))
+
+    def test_unknown_colour_in_jaws_is_left_alone(self):
+        p, far = self.heading_to_stage()
+        p.step(0.1, pose(1000, 600, 0), [far], [{'color': 0, 'x': 1120.0, 'y': 600.0}, far])
+        self.assertEqual(p.state, 'GOTO_STAGE')
+
+    def test_stone_beside_the_jaws_is_not_a_jaw_stone(self):
+        p, far = self.heading_to_stage()
+        p.step(0.1, pose(1000, 600, 0), [far], [{'color': 2, 'x': 1120.0, 'y': 650.0}, far])
+        self.assertEqual(p.state, 'GOTO_STAGE')
+
+
+class CarryRoute(unittest.TestCase):
+    def test_carry_goes_around_a_zone_on_the_straight_line(self):
+        import sim
+        cfg = config()
+        robot = sim.SimRobot(cfg, [], 80, 800, 0)            # grip point (200, 800)
+        robot.command('start', 0.0)
+        p = Planner(cfg)
+        p.state, p.since, p.carrying, p.pick_checked = 'CARRY', 0.0, 4, True   # to orange (1470, 1050)
+        sky_x, sky_y = 870, 1050                              # straight line passes 118 mm from its centre
+        closest, t = 1e9, 0.0
+        while t < 40 and p.state == 'CARRY':
+            robot.update(t)
+            if round(t * 50) % 5 == 0:
+                l, r, _ = p.step(t, robot.perceive(t)[0], [], [], robot.status(t))
+            robot.command('drive', t, l=l, r=r)
+            gx, gy = robot.grip_point()
+            for x, y in ((gx, gy), (robot.x, robot.y)):
+                closest = min(closest, math.hypot(x - sky_x, y - sky_y))
+            t += 0.02
+        self.assertEqual(p.state, 'RELEASE')
+        self.assertGreater(closest, 130 + 60)                 # robot body stays out of the sky-blue zone
+
+    def test_clear_line_goes_straight_to_the_zone(self):
+        p = Planner(config())
+        p.carrying = 4
+        self.assertEqual(p._carry_waypoint(1470, 700, 1470, 1050), (1470, 1050))
+
+
+class StallDiagnostic(unittest.TestCase):
+    def feed(self, poses_and_cmds):
+        p = Planner(config())
+        return [p._stalled(t, pose(x, y, h, t), l, r) for t, x, y, h, l, r in poses_and_cmds]
+
+    def test_spin_without_turning_is_flagged(self):
+        out = self.feed([(i * .05, 800, 600, 10 + .1 * i, .3, -.3) for i in range(20)])
+        self.assertIsNone(out[5])
+        self.assertEqual(out[-1], 'spin')
+
+    def test_drive_into_wall_is_flagged(self):
+        out = self.feed([(i * .05, 800 + .3 * i, 600, 0, .3, .3) for i in range(20)])
+        self.assertEqual(out[-1], 'drive')
+
+    def test_moving_or_stopped_is_not_flagged(self):
+        self.assertIsNone(self.feed([(i * .05, 800 + 10 * i, 600, 0, .3, .3) for i in range(20)])[-1])
+        self.assertIsNone(self.feed([(i * .05, 800, 600, 3 * i, .3, -.3) for i in range(20)])[-1])
+        self.assertIsNone(self.feed([(i * .05, 800, 600, 0, 0, 0) for i in range(20)])[-1])
+
+    def test_diagnostic_does_not_change_commands(self):
+        a, b = Planner(config()), Planner(config())
+        b._stalled = lambda *args: 'spin'
+        p = pose(400, 600, 0)
+        stone = [{'color': 4, 'x': 900, 'y': 600, 'confidence': .9}]
+        for t in (0.0, .05, .1, .15):
+            p = pose(400, 600, 0, t)
+            self.assertEqual(a.step(t, p, stone, stone)[:2], b.step(t, p, stone, stone)[:2])
+
+
 class CircleFit(unittest.TestCase):
     def test_axle_circle(self):
         from calibrate_grip import fit_circle

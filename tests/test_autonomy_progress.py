@@ -146,7 +146,8 @@ class RealRunnerTests(unittest.TestCase):
             args = SimpleNamespace(config=config_path, camera=1, esp_ip=None, port=4211,
                                    headless=True, dry_run=True, log_dir=folder / 'logs')
             snap = SimpleNamespace(frame=raw, pose=pose(600, 600, 0, time.monotonic()),
-                                   status='ok', targets=[target(1100, 600)], observations=[])
+                                   status='ok', targets=[target(1100, 600)],
+                                   observations=[{'color': 2, 'x': 1100, 'y': 600}, {'color': 0, 'x': 900, 'y': 300}])
             with patch('cv2.VideoCapture'), patch('cv2.destroyAllWindows'), \
                     patch('detect_live.LatestFrame') as reader, patch('perception.Perception') as perception, \
                     patch('teleop.Link') as link, patch('autonomy.DriveSender') as sender, redirect_stdout(io.StringIO()):
@@ -161,6 +162,8 @@ class RealRunnerTests(unittest.TestCase):
             self.assertTrue(row['dry_run'])
             self.assertEqual(row['state'], 'GOTO_STAGE')
             self.assertEqual(row['events'], [['grip', {'p': 'open'}]])
+            self.assertEqual(row['observation_list'], snap.observations)
+            self.assertEqual(row['target_list'], snap.targets)
 
 
 if __name__ == '__main__':

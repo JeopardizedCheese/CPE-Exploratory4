@@ -87,9 +87,10 @@ class Planner:
         self.retries = 0
         self.heading = 0.0                  # approach heading (rad)
         self.carrying = None
-        self.placed = 0
+        self.released = 0
         self.events_log = []
         self.pile_center = None
+        self.motion = []                    # (t, x, y, heading_deg, l, r) for stall diagnostics
         self.debug = {}
 
     # ------------------------------------------------------------ helpers
@@ -121,6 +122,25 @@ class Planner:
             return False
         return not any(now < until and math.hypot(t['x'] - x, t['y'] - y) < self.o['skip_mm']
                        for x, y, until in self.skip)
+
+    def _jaw_stone(self, pose, observations, now):
+        """A known-colour stone already between the open jaws (any observation, not only
+        targets: a stone in the jaws is never 'isolated')."""
+        h = math.radians(pose.heading_deg)
+        for ob in observations:
+            if not self._usable(ob, now):
+                continue
+            dx, dy = ob['x'] - pose.grip_x, ob['y'] - pose.grip_y
+            along, side = dx * math.cos(h) + dy * math.sin(h), -dx * math.sin(h) + dy * math.cos(h)
+            if abs(along) <= self.o['grip_tol_mm'] and abs(side) <= self.o['approach_max_side_mm']:
+                return ob
+        return None
+
+    def _start_grip(self, t, now, ev, why=''):
+        self.pick_pos, self.pick_checked, self.uncovered_at = (t['x'], t['y']), False, None
+        self.carrying = t['color']
+        ev.append(('grip', {'p': 'close'}))
+        self._go('GRIP', now, why)
 
     def _approach_heading(self, t, pose):
         if t.get('approach_deg') is not None:
@@ -168,6 +188,32 @@ class Planner:
         L2 = dx * dx + dy * dy or 1.0
         k = clamp(((px - ax) * dx + (py - ay) * dy) / L2, 0, 1)
         return math.hypot(ax + k * dx - px, ay + k * dy - py) < self.o['pile_avoid_mm']
+
+    def _carry_waypoint(self, ax, ay, bx, by):
+        """Next point for the grip point on the way from a to zone centre b: b itself,
+        or a point beside the nearest other zone the straight line would cross. A loose
+        stone pushed into a zone scores (or costs) like a placed one."""
+        clear = max(self.footprint['left'], self.footprint['right']) + 30
+        dx, dy = bx - ax, by - ay
+        L2 = dx * dx + dy * dy or 1.0
+        worst = None
+        for c, (zx, zy, zr) in self.zones.items():
+            if c == self.carrying:
+                continue
+            k = clamp(((zx - ax) * dx + (zy - ay) * dy) / L2, 0, 1)
+            if k == 0:                              # already heading away from this zone
+                continue
+            px, py = ax + k * dx, ay + k * dy
+            d = math.hypot(px - zx, py - zy)
+            if d < zr + clear and (worst is None or k < worst[0]):
+                worst = (k, px, py, zx, zy, zr, d)
+        if worst is None:
+            return bx, by
+        _, px, py, zx, zy, zr, d = worst
+        if d < 1:                                   # line goes through the centre: pass on the left
+            px, py, d = zx - dy / math.sqrt(L2), zy + dx / math.sqrt(L2), 1.0
+        out = (zr + clear) * 1.15
+        return zx + (px - zx) / d * out, zy + (py - zy) / d * out
 
     def _choose(self, pose):
         def cost(t):
@@ -243,8 +289,30 @@ class Planner:
         if not self.debug['reason']:
             self.debug['reason'] = 'waiting_' + self.state.lower()
         self.debug.update(state=self.state, l=l, r=r, lock_reason=self.lock.reason,
-                          target=dict(self.lock.target) if self.lock.target else None)
+                          target=dict(self.lock.target) if self.lock.target else None,
+                          stalled=self._stalled(now, pose, l, r))
         return result
+
+    def _stalled(self, now, pose, l, r):
+        """Diagnostic only: wheels commanded for stall_window_s but the tag has not moved
+        (wall contact, wheel slip, or turning below the torque needed to scrub the tyres).
+        Returns None, 'drive' or 'spin'. Does not change any command."""
+        if pose is None or now - pose.t > self.o['pose_timeout_s']:
+            self.motion = []
+            return None
+        self.motion.append((now, pose.x, pose.y, pose.heading_deg, l, r))
+        window = self.o.get('stall_window_s', 0.6)
+        while len(self.motion) > 1 and now - self.motion[1][0] >= window:
+            self.motion.pop(0)
+        t0, x0, y0, h0, _, _ = self.motion[0]
+        if now - t0 < window or any(abs(a) + abs(b) < 0.2 for *_, a, b in self.motion):
+            return None
+        spin = all(a * b < 0 for *_, a, b in self.motion)
+        moved = math.hypot(pose.x - x0, pose.y - y0)
+        turned = abs(math.degrees(wrap(math.radians(pose.heading_deg - h0))))
+        if spin:
+            return 'spin' if turned < 5 else None
+        return 'drive' if moved < 15 and turned < 5 else None
 
     def _step(self, now, pose, targets, observations, status=None):
         """Returns (l, r, events). events: [(cmd, fields)] one-off commands to send."""
@@ -284,6 +352,13 @@ class Planner:
             if math.hypot(self.park[0] - pose.x, self.park[1] - pose.y) < 60:
                 return 0.0, 0.0, ev
             return (*self._drive_to(pose, pose.x, pose.y, self.park[0], self.park[1], o['cruise']), ev)
+
+        if s in ('GOTO_STAGE', 'ALIGN') and self._servo_at(status, 'grip', o['grip_open']):
+            jaw = self._jaw_stone(pose, observations, now)
+            if jaw:
+                self.lock.target = dict(jaw)            # a Jaw stone beats the locked stone
+                self._start_grip(jaw, now, ev, f"jaw stone colour {jaw['color']}")
+                return 0.0, 0.0, ev
 
         if s == 'GOTO_STAGE':
             locked = self.lock.target
@@ -355,10 +430,7 @@ class Planner:
                         self._skip_target(now, 'missed sideways')
                     self._go('BACKOFF', now, f'side error {side:.0f} mm')
                     return 0.0, 0.0, ev
-                self.pick_pos, self.pick_checked, self.uncovered_at = (t['x'], t['y']), False, None
-                self.carrying = t['color']
-                ev.append(('grip', {'p': 'close'}))
-                self._go('GRIP', now)
+                self._start_grip(t, now, ev)
                 return 0.0, 0.0, ev
             if self._elapsed(now) > o['timeouts_s']['APPROACH']:
                 self._skip_target(now, 'approach timeout')
@@ -405,7 +477,8 @@ class Planner:
                 ev.append(('grip', {'p': 'open'}))
                 self._go('RELEASE', now)
                 return 0.0, 0.0, ev
-            return (*self._drive_to(pose, pose.grip_x, pose.grip_y, zx, zy, o['cruise']), ev)
+            wx, wy = self._carry_waypoint(pose.grip_x, pose.grip_y, zx, zy)
+            return (*self._drive_to(pose, pose.grip_x, pose.grip_y, wx, wy, o['cruise']), ev)
 
         if s == 'DISCARD':
             dx, dy = self.discard_to
@@ -417,10 +490,10 @@ class Planner:
 
         if s == 'RELEASE':
             if self._servo_done(now, status, 'grip', o['grip_open']):
-                self.placed += 1
+                self.released += 1
                 self.carrying = None
                 self.lock.done()
-                self._go('BACKOFF', now, 'placed')
+                self._go('BACKOFF', now, 'released')
             return 0.0, 0.0, ev
 
         if s == 'BACKOFF':
@@ -465,7 +538,7 @@ def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=Fa
                 break
         robot.command('drive', t, l=l, r=r)                  # 50 Hz, like the sender thread
         t += dt
-    return {**robot.score(), 'placed_by_planner': planner.placed, 'time_s': round(t, 1),
+    return {**robot.score(), 'released_by_planner': planner.released, 'time_s': round(t, 1),
             'log': planner.events_log, 'robot': robot}
 
 
@@ -585,7 +658,7 @@ def diagnostic_text(info):
         return '--' if value is None else f'{value:.1f}{suffix}'
     return (f"{info['state']} | {info['reason']} | L={info['l']:+.2f} R={info['r']:+.2f} | "
             f"goal={number('goal_distance_mm', 'mm')} err={number('heading_error_deg', 'deg')} | "
-            f"lock={info['lock_reason']}")
+            f"lock={info['lock_reason']}" + (f" | STALLED {info['stalled']}" if info.get('stalled') else ''))
 
 
 def run_real(args, cfg):
@@ -646,6 +719,7 @@ def run_real(args, cfg):
                 info = dict(planner.debug, t=decision_t, dry_run=dry_run, events=events,
                             frame_ms=(decision_t-now)*1000,
                             firmware=status, pose=snap.pose.as_dict() if snap.pose else None,
+                            observation_list=snap.observations, target_list=snap.targets,
                             tag_reason=perception.pose_est.last_reason if perception.pose_est else 'not configured')
                 trace.write(json.dumps(info) + '\n')
                 if decision_t-last_print >= .5:
@@ -665,7 +739,7 @@ def run_real(args, cfg):
                     canvas = np.full((h+116, max(w, 1000), 3), 25, np.uint8)
                     canvas[:h, :w] = frame
                     state = 'DRY RUN' if dry_run else status.get('state', '?') if status else 'NO LINK'
-                    lines = [f'{state} | vision={snap.status} | placed={planner.placed}', diagnostic_text(info),
+                    lines = [f'{state} | vision={snap.status} | released={planner.released}', diagnostic_text(info),
                              f"frame={info['frame_ms']:.0f}ms | tag={info['tag_reason']} | orange cross=drive goal | q/x/ESC stop"]
                     if warning:
                         lines.append('grip/axle offset not calibrated')
@@ -685,7 +759,7 @@ def run_real(args, cfg):
         reader.stop()
         cap.release()
         cv2.destroyAllWindows()
-        print('placed', planner.placed, 'events:', planner.events_log[-10:])
+        print('released', planner.released, 'events:', planner.events_log[-10:])
 
 
 def main():
