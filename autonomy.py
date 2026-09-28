@@ -4,6 +4,7 @@
     python autonomy.py --sim --scenario scattered   # easier field
     python autonomy.py 10.178.188.50 --camera 1     # real robot (sends 'start'; q/x/ESC stops)
     python autonomy.py --dry-run --camera 1       # camera/planner only, no robot commands
+    python autonomy.py 10.178.188.50 --camera 1 --record   # also save video.mp4 for replay
 
 The planner is deliberately simple:
 
@@ -696,6 +697,9 @@ def run_real(args, cfg):
     print('Config:', args.config.resolve())
     print('Dry run (no robot commands).' if dry_run else 'Real robot control enabled.')
     print('Diagnostics:', run_dir / 'trace.jsonl')
+    writer, video_frame = None, -1
+    if getattr(args, 'record', False):
+        print('Recording:', run_dir / 'video.mp4', '(raw frames; trace video_frame = frame index)')
     try:
         with (run_dir / 'trace.jsonl').open('w', encoding='utf-8') as trace:
             if sender:
@@ -707,6 +711,13 @@ def run_real(args, cfg):
                 now = time.monotonic()
                 if link:
                     link.poll()
+                if getattr(args, 'record', False):
+                    if writer is None:
+                        h, w = raw.shape[:2]
+                        writer = cv2.VideoWriter(str(run_dir / 'video.mp4'), cv2.VideoWriter_fourcc(*'mp4v'),
+                                                 args.record_fps, (w, h))
+                    writer.write(raw)
+                    video_frame += 1
                 snap = perception.step(raw, now)
                 decision_t = time.monotonic()
                 status = link.status if link and link.status_age() < 1.0 else None
@@ -718,6 +729,7 @@ def run_real(args, cfg):
                         sender.event(cmd, **fields)
                 info = dict(planner.debug, t=decision_t, dry_run=dry_run, events=events,
                             frame_ms=(decision_t-now)*1000,
+                            video_frame=video_frame if writer is not None else None,
                             firmware=status, pose=snap.pose.as_dict() if snap.pose else None,
                             observation_list=snap.observations, target_list=snap.targets,
                             tag_reason=perception.pose_est.last_reason if perception.pose_est else 'not configured')
@@ -758,6 +770,8 @@ def run_real(args, cfg):
             link.sock.close()
         reader.stop()
         cap.release()
+        if writer is not None:
+            writer.release()
         cv2.destroyAllWindows()
         print('released', planner.released, 'events:', planner.events_log[-10:])
 
@@ -771,6 +785,9 @@ def main():
     p.add_argument('--headless', action='store_true')
     p.add_argument('--dry-run', action='store_true', help='Live camera/planner preview, no UDP or robot commands')
     p.add_argument('--check-config', action='store_true', help='Check calibration files without camera or robot')
+    p.add_argument('--record', action='store_true',
+                   help='Save the processed raw camera frames to video.mp4 next to trace.jsonl (replay with detect_live.py --video)')
+    p.add_argument('--record-fps', type=float, default=15, help='Playback rate written into video.mp4; timing is in trace.jsonl')
     p.add_argument('--log-dir', type=Path, default=Path('runs/autonomy'), help='Config and per-frame decision logs')
     p.add_argument('--sim', action='store_true', help='simulated robot and field')
     p.add_argument('--scenario', choices=['pile', 'scattered'], default='pile')
@@ -778,6 +795,8 @@ def main():
     p.add_argument('--seconds', type=float, default=300)
     p.add_argument('--seed', type=int, default=0)
     p.add_argument('--noise', action='store_true', help='sim: pose noise, dropped frames, latency, failed grabs')
+    p.add_argument('--field-physics', action='store_true',
+                   help='sim: MIN_DUTY, spin stalls, walls and tag loss near edges as measured on the field')
     args = p.parse_args()
     if not args.config.is_file():
         p.error(f'Config not found: {args.config}. Pass --config with your actual calibrated JSON file.')
@@ -791,7 +810,10 @@ def main():
         return
     if args.sim:
         params = ({'pose_noise_mm': 4, 'heading_noise_deg': 1.5, 'tag_dropout': 0.1,
-                   'latency_s': 0.12, 'grip_success': 0.85} if args.noise else None)
+                   'latency_s': 0.12, 'grip_success': 0.85} if args.noise else {})
+        if args.field_physics:
+            import sim
+            params.update(sim.FIELD_PARAMS)
         result = run_sim(cfg, scenario(cfg, args.scenario, args.seed), args.seconds, params=params,
                          seed=args.seed, show=args.show)
         for entry in result['log']:

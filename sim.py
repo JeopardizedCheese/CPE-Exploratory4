@@ -44,7 +44,21 @@ DEFAULT_PARAMS = {
     'tag_dropout': 0.0,          # fraction of frames without a pose
     'latency_s': 0.0,            # how old perception is when the planner gets it
     'run_time_s': None, 'drive_timeout_s': 0.3,   # firmware has no run timer; set seconds to emulate one
+    # Motor/field effects, all off by default (see FIELD_PARAMS):
+    'min_duty': 0.0,             # firmware MIN_DUTY: command c drives at min_duty + |c| * (1 - min_duty)
+    'stall_duty': 0.0,           # below this duty the wheel does not turn; speed grows from here to 1.0
+    'spin_speed_scale': 1.0,     # turning in place is slower than wheel kinematics (tyre scrub)
+    'spin_breakaway': None,      # (lo, hi): duty needed to start turning in place, drawn at each start
+    'wall_mm': 0.0,              # the body stops the tag this far from a wall
+    'tag_edge_mm': 0.0,          # no pose within this distance of the arena edge (tag out of frame)
 }
+
+# Fitted to the 2026-09-29 field traces (runs/autonomy/20260929-02*): forward 0.3 -> ~190 mm/s,
+# 0.6 -> ~370 mm/s; spin 0.3 stalls about half the time and turns ~30 deg/s on average;
+# tag lost 100-170 mm from the edge. A model, not a measurement of every robot.
+FIELD_PARAMS = {'min_duty': 0.71, 'stall_duty': 0.70, 'max_speed_mm_s': 600.0,
+                'spin_speed_scale': 0.35, 'spin_breakaway': (0.76, 0.84),
+                'wall_mm': 100.0, 'tag_edge_mm': 130.0}
 
 
 def in_polygon(x, y, poly):
@@ -82,6 +96,8 @@ class SimRobot:
         self.held = None
         self.t = 0.0
         self.history = []            # (t, x, y, h) for latency
+        self.spinning = False        # turning in place has broken free of static friction
+        self.breakaway = self._draw_breakaway()
         self.log = []
 
     # ------------------------------------------------------------ firmware side
@@ -116,6 +132,30 @@ class SimRobot:
                 'r': self.out[1], 'servo': [round(v) for v in self.servo]}
 
     # ------------------------------------------------------------ physics
+    def _draw_breakaway(self):
+        b = self.p['spin_breakaway']
+        return self.rng.uniform(*b) if b else 0.0
+
+    def _wheel_speeds(self):
+        """mm/s per wheel from firmware output, through MIN_DUTY, motor stall and spin friction."""
+        p = self.p
+        duty = [0.0 if abs(o) < 0.01 else math.copysign(p['min_duty'] + abs(o) * (1 - p['min_duty']), o)
+                for o in self.out]
+        spin = duty[0] * duty[1] < 0
+        if not spin:
+            if self.spinning:
+                self.breakaway = self._draw_breakaway()
+            self.spinning = False
+        elif not self.spinning:
+            self.spinning = min(abs(d) for d in duty) >= self.breakaway
+            if not self.spinning:
+                return [0.0, 0.0], spin                      # stuck: wheels hum, robot does not turn
+        stall = p['stall_duty']
+        speed = [math.copysign(max(0.0, abs(d) - stall) / (1 - stall), d) * p['max_speed_mm_s'] for d in duty]
+        if spin:
+            speed = [v * p['spin_speed_scale'] for v in speed]
+        return speed, spin
+
     def grip_point(self, x=None, y=None, h=None):
         x = self.x if x is None else x
         y = self.y if y is None else y
@@ -136,16 +176,18 @@ class SimRobot:
             else:
                 step = self.p['ramp_per_s'] * dt
                 self.out[i] = min(c, o + step) if c > o else max(c, o - step)
-        v = (self.out[0] + self.out[1]) / 2 * self.p['max_speed_mm_s']
-        w = (self.out[0] - self.out[1]) * self.p['max_speed_mm_s'] / self.p['wheel_base_mm']   # rad/s, clockwise
+        (sl, sr), _ = self._wheel_speeds()
+        v = (sl + sr) / 2
+        w = (sl - sr) / self.p['wheel_base_mm']            # rad/s, clockwise
         a = self.p['axle_offset_mm']
         ax, ay = self.x - a * math.cos(self.h), self.y - a * math.sin(self.h)     # rotate about the axle
         self.h += w * dt
         ax += v * math.cos(self.h) * dt
         ay += v * math.sin(self.h) * dt
         self.x, self.y = ax + a * math.cos(self.h), ay + a * math.sin(self.h)
-        self.x = min(max(self.x, 0.0), self.size[0])
-        self.y = min(max(self.y, 0.0), self.size[1])
+        m = self.p['wall_mm']
+        self.x = min(max(self.x, m), self.size[0] - m)
+        self.y = min(max(self.y, m), self.size[1] - m)
         for i in range(len(self.servo)):
             d = self.target[i] - self.servo[i]
             s = self.p['servo_deg_per_s'] * dt
@@ -196,7 +238,8 @@ class SimRobot:
         past = min(self.history, key=lambda e: abs(e[0] - t_seen)) if self.history else (now, self.x, self.y, self.h)
         _, x, y, h = past
         pose = None
-        if self.rng.random() >= self.p['tag_dropout']:
+        edge = min(x, y, self.size[0] - x, self.size[1] - y)
+        if self.rng.random() >= self.p['tag_dropout'] and edge >= self.p['tag_edge_mm']:
             x += self.rng.gauss(0, self.p['pose_noise_mm'])
             y += self.rng.gauss(0, self.p['pose_noise_mm'])
             h += math.radians(self.rng.gauss(0, self.p['heading_noise_deg']))

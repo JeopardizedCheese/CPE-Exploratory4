@@ -179,6 +179,41 @@ class StallDiagnostic(unittest.TestCase):
             self.assertEqual(a.step(t, p, stone, stone)[:2], b.step(t, p, stone, stone)[:2])
 
 
+class FieldPhysics(unittest.TestCase):
+    def drive(self, l, r, secs, params, seed=0):
+        import sim
+        rb = sim.SimRobot(config(), [], 1000, 600, 0, params=dict(params, ramp_per_s=100), seed=seed)
+        rb.command('start', 0)
+        t = 0.0
+        while t < secs:
+            rb.command('drive', t, l=l, r=r)
+            t += .02
+            rb.update(t)
+        return rb
+
+    def test_default_physics_unchanged(self):
+        rb = self.drive(.5, .5, 1.0, {})
+        self.assertAlmostEqual(rb.x - 1000, 150, delta=1)
+
+    def test_field_min_duty_speed(self):
+        import sim
+        rb = self.drive(.3, .3, 1.0, sim.FIELD_PARAMS)
+        self.assertTrue(170 < rb.x - 1000 < 220)
+
+    def test_field_spin_stalls_below_breakaway(self):
+        import sim
+        rb = self.drive(.1, -.1, 1.0, sim.FIELD_PARAMS)
+        self.assertEqual(rb.h, 0.0)
+        rb = self.drive(.6, -.6, 1.0, sim.FIELD_PARAMS)
+        self.assertGreater(abs(rb.h), .5)
+
+    def test_field_wall_and_tag_edge(self):
+        import sim
+        rb = self.drive(1, 1, 5.0, sim.FIELD_PARAMS)
+        self.assertAlmostEqual(rb.x, 2100 - sim.FIELD_PARAMS['wall_mm'])
+        self.assertIsNone(rb.perceive(5.0)[0])
+
+
 class CircleFit(unittest.TestCase):
     def test_axle_circle(self):
         from calibrate_grip import fit_circle
