@@ -27,7 +27,7 @@ Commands, from the extracted project directory:
 
 ```bash
 python -m unittest discover -s tests -q
-python color_preview.py --audit --config field/calib.json
+python color_preview.py --audit --config calib.json
 python color_preview.py --image examples/image.png --background examples/image1.png --config calib.json --check-reference --headless --output evidence/provided-photos
 ```
 

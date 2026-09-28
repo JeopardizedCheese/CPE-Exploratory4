@@ -124,9 +124,11 @@ class ProgressTests(unittest.TestCase):
 
 
 class RealRunnerTests(unittest.TestCase):
-    def test_shipped_field_profile_reports_missing_runtime_calibration(self):
-        path = Path(__file__).resolve().parents[1] / 'field' / 'calib.json'
-        problems = autonomy.setup_problems(json.loads(path.read_text()), path)
+    def test_uncalibrated_profile_reports_missing_runtime_calibration(self):
+        cfg = json.loads((Path(__file__).resolve().parents[1] / 'calib.json').read_text())
+        cfg['hsv'], cfg['zones'] = {}, {}
+        with tempfile.TemporaryDirectory() as d:                   # no background.png next to it
+            problems = autonomy.setup_problems(cfg, Path(d) / 'calib.json')
         self.assertTrue(any('HSV' in p for p in problems))
         self.assertTrue(any('zones' in p for p in problems))
         self.assertTrue(any('reference' in p for p in problems))

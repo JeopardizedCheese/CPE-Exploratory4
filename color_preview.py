@@ -2,7 +2,7 @@
 
 Examples:
   python color_preview.py --audit --config calib.json
-  python color_preview.py 1 --config field/calib.json
+  python color_preview.py 1
   python color_preview.py --image frame.png --background background.png --config calib.json --headless --output review
 
 SPACE pauses a camera/video; s saves raw image, overlay, masks and JSON; q quits.

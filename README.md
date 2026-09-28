@@ -1,11 +1,9 @@
 # Gemstone sorting: overhead perception and robot link
 
-**Color-first update:** start with [COLOR_FIRST.md](COLOR_FIRST.md). Use
-`--config field/calib.json` for the newly measured 2100 x 1200 mm arena. The
-root `calib.json` is the supplied historical calibration, retained for the photo
-comparison. `color_preview.py` provides camera/image/video diagnostics without
-connecting to a robot. The new field profile requires fresh corners, background,
-six-color samples and zone labels before operation.
+**Color-first update:** start with [COLOR_FIRST.md](COLOR_FIRST.md). The
+root `calib.json` is the calibration for the 2100 x 1200 mm arena and every tool
+reads it by default. `color_preview.py` provides camera/image/video diagnostics
+without connecting to a robot.
 
 This improves the camera/ESP32 prototype from `CPE-Exploratory1-main.zip`.
 The implemented scope is perception, camera calibration, target communication,
@@ -25,16 +23,14 @@ Use Python 3.12 and a virtual environment. From this project directory:
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python calibrate_arena.py 1 --config field/calib.json
-.venv\Scripts\python sample_hsv.py 1 --config field/calib.json
-.venv\Scripts\python find_zones.py --config field/calib.json
-.venv\Scripts\python color_preview.py 1 --config field/calib.json
+.venv\Scripts\python calibrate_arena.py 1
+.venv\Scripts\python sample_hsv.py 1
+.venv\Scripts\python find_zones.py
+.venv\Scripts\python color_preview.py 1
 ```
 
 On Linux/macOS use `.venv/bin/python` instead of `.venv\Scripts\python`.
-Use `--config field/calib.json` explicitly with every camera tool. Most legacy
-tools default to the historical root `calib.json`; `color_preview.py` defaults to
-the new field profile. These defaults intentionally do not replace old settings.
+All tools read the root `calib.json` unless `--config` names another file.
 
 Use the normal GUI OpenCV package in requirements.txt for camera windows.
 `detect_live.py --debug` prints one line per blob (votes, dominance, margin) for
@@ -70,11 +66,11 @@ Press `q` to quit detection, `m` to display foreground segmentation.
    `camera_properties` (e.g. `AUTO_WB`, `AUTO_EXPOSURE`, `EXPOSURE`). Values are
    backend dependent; an accepted setting is not proof the hardware applied it.
    All tools apply the same configuration. Do not change it mid-run.
-2. Calibrate the **empty field first** with `calibrate_arena.py --config field/calib.json`.
+2. Calibrate the **empty field first** with `calibrate_arena.py`.
    Your latest measured size is 2100 x 1200 mm. SPACE freezes; select corners
    TL, TR, BR, BL, then Enter. The long side corresponds to the horizontal axis.
    Press `s` to save without outlining zones; label circles in step 5.
-3. Run `sample_hsv.py --config field/calib.json`. SPACE freezes. Select 1 violet,
+3. Run `sample_hsv.py`. SPACE freezes. Select 1 violet,
    2 cyan, 3 crimson, 4 orange, 5 skyblue, 6 lime; click real stone faces.
    Avoid glare, floor and scoring paper. Collect several sessions as described in
    [COLOR_FIRST.md](COLOR_FIRST.md). `u` undoes; `s` applies ranges; `q` quits.
@@ -141,7 +137,6 @@ Home HSV values and relaxed thresholds do not transfer to the field.
 
 ## Values to set before a real run
 
-For the current arena, `calib.json` in the table below means `field/calib.json`.
 
 | Where | Value | Set from |
 | --- | --- | --- |
@@ -269,7 +264,7 @@ proof that the robot's full route or footprint is clear.
 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -v
-.venv\Scripts\python detect_live.py --video arena.mp4 --config field/calib.json --headless
+.venv\Scripts\python detect_live.py --video arena.mp4 --headless
 ```
 
 Replay requires the same camera geometry/reference and never sends UDP.
@@ -305,7 +300,7 @@ start field checks with one stone.
 ```bash
 python autonomy.py --sim --show                   # simulated robot + field, watch it (q quits)
 python autonomy.py --sim --noise --scenario pile  # with pose noise, latency, dropped tags, failed grabs
-python autonomy.py <ESP_IP> --camera 1 --config field/calib.json # after field and firmware validation
+python autonomy.py <ESP_IP> --camera 1 # after field and firmware validation
 python -m unittest discover -s tests              # includes simulated runs and safety tests
 ```
 
