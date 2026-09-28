@@ -55,10 +55,11 @@ DEFAULT_PARAMS = {
 
 # Fitted to the 2026-09-29 field traces (runs/autonomy/20260929-02*): forward 0.3 -> ~190 mm/s,
 # 0.6 -> ~370 mm/s; spin 0.3 stalls about half the time and turns ~30 deg/s on average;
-# tag lost 100-170 mm from the edge. A model, not a measurement of every robot.
+# tag lost 100-170 mm from the edge; ~0.1 s from exposure to decision. A model, not a measurement of every robot.
 FIELD_PARAMS = {'min_duty': 0.71, 'stall_duty': 0.70, 'max_speed_mm_s': 600.0,
                 'spin_speed_scale': 0.35, 'spin_breakaway': (0.76, 0.84),
-                'wall_mm': 100.0, 'tag_edge_mm': 130.0}
+                'wall_mm': 100.0, 'tag_edge_mm': 130.0,
+                'latency_s': 0.1}           # ~50 ms processing + camera delay
 
 
 def in_polygon(x, y, poly):

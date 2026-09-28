@@ -179,6 +179,50 @@ class StallDiagnostic(unittest.TestCase):
             self.assertEqual(a.step(t, p, stone, stone)[:2], b.step(t, p, stone, stone)[:2])
 
 
+class TurnControl(unittest.TestCase):
+    def spin_series(self, headings, err=math.radians(90)):
+        """Call _spin once per 0.1 s while the tag reports these headings."""
+        p = Planner(config())
+        out = []
+        for i, h in enumerate(headings):
+            t = i * .1
+            p.motion.append((t, 800, 600, h, 0, 0))
+            out.append(p._spin(err, t)[0])
+        return out
+
+    def test_power_rises_while_stuck(self):
+        out = self.spin_series([0] * 8)
+        self.assertGreater(out[-1], out[0] + .2)
+
+    def test_power_cut_when_it_breaks_free(self):
+        out = self.spin_series([0] * 6 + [8, 18])       # starts turning at ~100 deg/s
+        self.assertLess(out[-1], out[5] * .8)
+
+    def test_align_stops_early_while_coasting(self):
+        p = Planner(config())
+        for i, h in enumerate((0, 5, 10)):              # turning at 50 deg/s
+            p.motion.append((i * .1, 800, 600, h, 0, 0))
+        self.assertIsNone(p._turn_to(pose(800, 600, 10, .2), math.radians(19)))
+
+    def test_goal_behind_does_not_flip_turn_direction(self):
+        p = Planner(config())
+        p._was_spinning, p._spin_dir, p.turn_t = True, 1.0, 0.0
+        l, r = p._drive_to(pose(800, 600, 0, .1), 800, 600, 400, 610, .3)   # err just past -180
+        self.assertGreater(l, 0)
+
+    def test_goal_inside_grip_circle_backs_out(self):
+        p = Planner(config())
+        pp = pose(800, 600, 0)
+        l, r = p._drive_to(pp, pp.grip_x, pp.grip_y, 780, 600, .3)   # behind the grip point, near the axle
+        self.assertLess(l, 0)
+        self.assertEqual(l, r)
+
+    def test_fixed_power_turns_still_available(self):
+        cfg = config()
+        cfg['autonomy'] = {'turn_rate_control': False}
+        self.assertEqual(Planner(cfg)._spin(math.radians(90), 0)[0], .35)
+
+
 class FieldPhysics(unittest.TestCase):
     def drive(self, l, r, secs, params, seed=0):
         import sim

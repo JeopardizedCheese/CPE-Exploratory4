@@ -42,8 +42,9 @@ from target_lock import TargetLock
 
 DEFAULTS = {
     'cruise': 0.45, 'creep': 0.18, 'turn': 0.35, 'min_turn': 0.16,
-    'kp_turn': 1.0,                 # drive-command per radian of heading error
-    'max_forward_steer_ratio': 0.8, # below 1: neither wheel reverses in the forward branch
+    'kp_turn': 1.0,                 # drive-command per radian of heading error (fixed-power turns)
+    'max_forward_steer_ratio': 0.5, # below 1: neither wheel reverses in the forward branch; with
+                                    # MIN_DUTY, 0.8 made 'forward' nearly a pivot (overshoot, hunting)
     'turn_in_place_deg': 35,        # larger heading error: stop and turn first
     'stage_mm': 160, 'stage_tol_mm': 35, 'align_tol_deg': 6,
     'grip_tol_mm': 6, 'approach_max_side_mm': 18,   # about half of (open jaw gap - stone width)
@@ -54,6 +55,25 @@ DEFAULTS = {
     'grip_open': 0, 'grip_close': 40, 'grip_servo': 0,   # = GRIP_OPEN/CLOSE_DEG in config.h
     'park_mm': None,                 # where to wait when nothing is pickable; default right side
     'stone_height_mm': 20,
+    # Turning in place is closed-loop on the turn rate measured from the tag: the tyres need
+    # about 0.8 duty to start turning but much less to keep turning, so any fixed power
+    # either stalls or whips round and overshoots. Power rises while the robot does not turn
+    # and drops as soon as it turns faster than wanted. false = old fixed-power turns.
+    'turn_rate_control': True,
+    'turn_rate_max_dps': 60,         # wanted turn rate far from the goal heading
+    'turn_rate_min_dps': 20,         # wanted turn rate close to it
+    'turn_rate_per_deg': 2.0,        # wanted deg/s per degree of heading error
+    'turn_power_max': 0.6,           # never push harder than this to break free
+    'turn_boost_per_s': 0.4,         # power rise per second while turning too slowly
+    'turn_breakaway_cut': 0.6,       # once it starts turning, drop power to this fraction
+    'turn_ease_per_s': 1.2,          # power drop per second while turning too fast
+    'turn_lead_s': 0.12,             # camera + processing delay: stop turning this early
+    'turn_exit_deg': 15,             # a turn toward a drive goal continues until this close
+                                     # (hysteresis against turn_in_place_deg: no turn/drive dance)
+    'turn_keep_dir_deg': 150,        # goal almost behind: keep the current turn direction
+    'backout_inside_reach': True,    # CARRY goal inside the grip point's turning circle: creep
+                                     # straight back a few cm instead of turning on the spot forever
+    'kp_drive': 0.5,                 # steering per radian while driving forward
 }
 
 
@@ -92,6 +112,12 @@ class Planner:
         self.events_log = []
         self.pile_center = None
         self.motion = []                    # (t, x, y, heading_deg, l, r) for stall diagnostics
+        self.turn_power = None              # last spin power that turned the robot (learned)
+        self._spin_dir = 0.0
+        self._spin_power = 0.0
+        self._spin_moving = False
+        self._was_spinning = False          # _drive_to: previous frame turned in place
+        self.turn_t = None                  # time of the last spin command
         self.debug = {}
 
     # ------------------------------------------------------------ helpers
@@ -240,26 +266,86 @@ class Planner:
         o = self.o
         self.debug.update(goal_x_mm=gx, goal_y_mm=gy, goal_distance_mm=dist,
                           heading_error_deg=math.degrees(err))
-        if abs(err) > math.radians(o['turn_in_place_deg']):
+        turning = o['turn_rate_control'] and self._was_spinning
+        if o['backout_inside_reach'] and abs(err) > math.pi / 2:
+            ax, ay = self._axle(pose)
+            reach = math.hypot(px - ax, py - ay)
+            if reach > 50 and math.hypot(gx - ax, gy - ay) < 0.9 * reach:
+                # Turning on the spot swings (px, py) round a circle that never reaches the
+                # goal (it would turn back and forth forever). Back straight up a little.
+                self.debug['reason'] = 'back_out_of_reach'
+                return -o['creep'], -o['creep']
+        if turning and abs(err) > math.radians(o['turn_keep_dir_deg']) and err * self._spin_dir < 0:
+            err = math.copysign(abs(err), self._spin_dir)   # +-180 flip: do not reverse the turn
+        if turning:
+            left = err - math.radians(self._yaw_rate() * o['turn_lead_s'])   # after the camera delay
+            turning = abs(left) > math.radians(o['turn_exit_deg']) and left * err > 0
+        if abs(err) > math.radians(o['turn_in_place_deg']) or turning:
             self.debug['reason'] = 'turn_to_goal'
-            w = math.copysign(max(o['min_turn'], min(o['turn'], o['kp_turn'] * abs(err))), err)
-            return w, -w
+            self._was_spinning = True
+            return self._spin(err, pose.t)
+        self._was_spinning = False
         v = speed * clamp(dist / 200.0, 0.4, 1.0) * math.cos(err)
         # Near the goal, v gets smaller while the old steering term did not.
         # At 80 mm / 20 degrees it gave (+.518, -.180), another pivot instead
         # of forward travel. MIN_DUTY in firmware makes that reversal pronounced.
         steer_limit = min(o['turn'], abs(v) * clamp(o['max_forward_steer_ratio'], 0, .95))
-        w = clamp(o['kp_turn'] * err, -steer_limit, steer_limit)
+        w = clamp(o.get('kp_drive', o['kp_turn']) * err, -steer_limit, steer_limit)
         self.debug['reason'] = 'drive_forward'
         return clamp(v + w, -1, 1), clamp(v - w, -1, 1)
 
     def _turn_to(self, pose, heading):
         err = wrap(heading - math.radians(pose.heading_deg))
         self.debug.update(heading_error_deg=math.degrees(err), reason='turn_to_approach')
-        if abs(err) <= math.radians(self.o['align_tol_deg']):
-            return None
+        lead = math.radians(self._yaw_rate() * self.o['turn_lead_s']) if self.o['turn_rate_control'] else 0.0
+        if abs(err) <= math.radians(self.o['align_tol_deg']) or \
+                (err * lead > 0 and abs(err - lead) <= math.radians(self.o['align_tol_deg'])):
+            return None                     # there, or still coasting there within the camera delay
+        return self._spin(err, pose.t)
+
+    def _yaw_rate(self, window=0.25):
+        """Measured turn rate (deg/s, + = heading increasing) from recent fresh poses."""
+        if not self.motion:
+            return 0.0
+        end = self.motion[-1]
+        pts = [m for m in self.motion if end[0] - m[0] <= window]
+        if end[0] - pts[0][0] < 0.08:
+            return 0.0
+        return math.degrees(wrap(math.radians(end[3] - pts[0][3]))) / (end[0] - pts[0][0])
+
+    def _spin(self, err, now):
+        """Turn in place towards heading error err (rad): returns (l, r)."""
         o = self.o
-        w = math.copysign(max(o['min_turn'], min(o['turn'], o['kp_turn'] * abs(err))), err)
+        if not o['turn_rate_control']:
+            w = math.copysign(max(o['min_turn'], min(o['turn'], o['kp_turn'] * abs(err))), err)
+            return w, -w
+        err_deg = abs(math.degrees(err))
+        wanted = clamp(o['turn_rate_per_deg'] * err_deg, o['turn_rate_min_dps'], o['turn_rate_max_dps'])
+        rate = self._yaw_rate() * math.copysign(1, err)       # + = turning the right way
+        dt = 0.0 if self.turn_t is None else clamp(now - self.turn_t, 0.0, 0.2)
+        if self.turn_t is None or now - self.turn_t > 0.5 or self._spin_dir * err < 0:
+            # new turn: start a little below what last broke the robot free
+            power = o['min_turn'] if self.turn_power is None else max(o['min_turn'], self.turn_power - 0.05)
+            self._spin_moving = False
+        else:
+            power = self._spin_power
+            if not self._spin_moving and rate > 0.5 * wanted:
+                # Broke free. The camera saw it ~turn_lead_s late, and power kept rising
+                # meanwhile: remember the power at the break, and cut, because keeping
+                # a turn going takes much less than starting it.
+                self._spin_moving = True
+                self.turn_power = max(o['min_turn'], power - o['turn_boost_per_s'] * o['turn_lead_s'])
+                power *= o['turn_breakaway_cut']
+            elif rate < 0.5 * wanted:
+                power += o['turn_boost_per_s'] * dt
+                if rate < 5:
+                    self._spin_moving = False   # stuck again: the next start is a new break
+            elif rate > 1.3 * wanted:
+                power -= o['turn_ease_per_s'] * dt
+        power = clamp(power, o['min_turn'], o['turn_power_max'])
+        self._spin_power, self.turn_t, self._spin_dir = power, now, math.copysign(1, err)
+        self.debug.update(turn_power=power, turn_rate_dps=rate, turn_wanted_dps=wanted)
+        w = math.copysign(power, err)
         return w, -w
 
     # ------------------------------------------------------------ main step
@@ -442,8 +528,7 @@ class Planner:
             self.debug['heading_error_deg'] = math.degrees(err)
             if abs(err) > math.radians(20):                  # badly off: turn on the spot first
                 self.debug['reason'] = 'turn_to_approach'
-                w = math.copysign(o['min_turn'], err)
-                return w, -w, ev
+                return (*self._spin(err, pose.t), ev)
             v = o['creep']
             limit = min(.12, abs(v) * clamp(o['max_forward_steer_ratio'], 0, .95))
             steer = clamp(0.8 * err, -limit, limit)
