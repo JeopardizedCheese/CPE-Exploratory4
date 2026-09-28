@@ -8,7 +8,8 @@ import numpy as np
 
 from gesture_collect import Recording
 from gesture_logic import GestureControl, Hand
-from gesture_model import FEATURE_COUNT, FEATURE_VERSION, LABELS, GestureModel, gated_labels, landmark_features
+from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABELS, GestureModel,
+                           gated_labels, landmark_features)
 from gesture_train import load_recordings, metrics, split_sessions, train
 
 
@@ -61,15 +62,25 @@ class CollectionTests(unittest.TestCase):
 
     def test_roundtrip_uses_human_label_not_rule_prediction(self):
         with tempfile.TemporaryDirectory() as tmp:
-            rec = Recording('THREE', 0.)
+            rec = Recording('THREE', 0., hand='L')
             rec.add(self.hand(2.1), 2.1)  # detector says OPEN, human label is THREE
             path = rec.save(Path(tmp)/'session-a', 'session-a')
-            x, y, groups, files = load_recordings(tmp)
+            x, y, groups, hands, files = load_recordings(tmp)
             self.assertEqual(x.shape, (1, FEATURE_COUNT))
             self.assertEqual(y.tolist(), ['THREE'])
+            self.assertEqual(hands.tolist(), ['L'])
             self.assertEqual(groups.tolist(), ['session-a'])
             self.assertTrue(path.exists())
             self.assertEqual(len(files), 1)
+
+    def test_legacy_recording_without_hand_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)/'old'
+            directory.mkdir()
+            np.savez_compressed(directory/'OPEN.npz', X=np.zeros((1, FEATURE_COUNT)), label=np.array('OPEN'),
+                                session=np.array('old'), feature_version=np.array(FEATURE_VERSION))
+            with self.assertRaisesRegex(ValueError, 'Legacy'):
+                load_recordings(tmp)
 
     def test_duplicate_file_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -95,7 +106,7 @@ class CollectionTests(unittest.TestCase):
             def join(self, **kwargs):
                 pass
             def snapshot(self):
-                return self.frame, Hand(clock[0], 'OPEN', features=tuple(np.zeros(FEATURE_COUNT))), ''
+                return self.frame, (Hand(clock[0], 'OPEN', features=tuple(np.zeros(FEATURE_COUNT))),), ''
 
         def run(argv, keys):
             sequence = iter(keys)
@@ -113,10 +124,11 @@ class CollectionTests(unittest.TestCase):
             model.write_bytes(b'not read by fake worker')
             directory = Path(tmp)/'data'
             argv = ['gesture_collect.py', '--data', str(directory), '--model', str(model), '--samples', '30']
-            run(argv, [ord('5'), ord('r')]+[-1]*50+[ord('u'), ord('r')]+[-1]*50+[27])
-            x, y, groups, inventory = load_recordings(directory)
+            run(argv, [ord('5'), ord('h'), ord('r')]+[-1]*50+[ord('u'), ord('r')]+[-1]*50+[27])
+            x, y, groups, hands, inventory = load_recordings(directory)
             self.assertEqual(x.shape, (30, FEATURE_COUNT))
             self.assertEqual(set(y), {'THREE'})
+            self.assertEqual(set(hands), {'L'})
             self.assertEqual(len(inventory), 1)
             session = str(groups[0])
             self.assertEqual(len(list((directory/session/'discarded').glob('*.npz'))), 1)
@@ -126,13 +138,15 @@ class CollectionTests(unittest.TestCase):
 
 class SplitTests(unittest.TestCase):
     def data(self, sessions=5):
-        y = np.tile(np.repeat(LABELS, 30), sessions)
-        groups = np.repeat([f's{i}' for i in range(sessions)], 30*len(LABELS))
-        return y, groups
+        per_session = 30*len(LABELS)*len(HANDS)
+        y = np.tile(np.repeat(LABELS, 30*len(HANDS)), sessions)
+        hands = np.tile(list(HANDS), per_session*sessions//len(HANDS))
+        groups = np.repeat([f's{i}' for i in range(sessions)], per_session)
+        return y, groups, hands
 
     def test_no_session_leakage_and_every_label_present(self):
-        y, groups = self.data()
-        split = split_sessions(y, groups)
+        y, groups, hands = self.data()
+        split = split_sessions(y, groups, hands)
         names = list(split)
         for name in names:
             self.assertEqual(set(y[split[name]]), set(LABELS))
@@ -144,17 +158,20 @@ class SplitTests(unittest.TestCase):
     def test_insufficient_or_incomplete_sessions_fail(self):
         with self.assertRaisesRegex(ValueError, 'at least 5'):
             split_sessions(*self.data(4))
-        y, groups = self.data()
+        y, groups, hands = self.data()
         keep = ~((groups == 's0') & (y == 'UNKNOWN'))
         with self.assertRaisesRegex(ValueError, 'Missing/short'):
-            split_sessions(y[keep], groups[keep])
+            split_sessions(y[keep], groups[keep], hands[keep])
+        keep = ~((groups == 's0') & (y == 'ONE') & (hands == 'L'))
+        with self.assertRaisesRegex(ValueError, 'ONE/L'):
+            split_sessions(y[keep], groups[keep], hands[keep])
 
     def test_report_counts_false_commands_not_only_accuracy(self):
         report = metrics(np.array(['UNKNOWN', 'OPEN', 'FIST']),
                          np.array(['ONE', 'UNKNOWN', 'FIST']))
         self.assertEqual(report['wrong_active_commands'], 1)
         self.assertEqual(report['unknown_to_active_rate'], 1.)
-        self.assertEqual(report['correct_active_recall'], 0.)
+        self.assertEqual(report['correct_active_recall'], .5)  # FIST (stop) is a command now
 
 
 class TrainingIntegrationTests(unittest.TestCase):
@@ -168,9 +185,11 @@ class TrainingIntegrationTests(unittest.TestCase):
         class Link:
             def __init__(self, *args):
                 self.started, self.received = False, 0.
+                self.status, self.status_at = None, 0.
             def poll(self):
                 clock[0] += .001
-                self.received = clock[0]
+                self.received = self.status_at = clock[0]
+                self.status = {'state': 'RUNNING' if self.started else 'IDLE', 'servo': [0]}
             def running(self, now):
                 return self.started and 0 <= now-self.received < .6
             def send(self, cmd, **fields):
@@ -190,8 +209,8 @@ class TrainingIntegrationTests(unittest.TestCase):
                 pass
             def snapshot(self):
                 self.count += 1
-                return np.zeros((480, 640, 3), dtype=np.uint8), Hand(
-                    clock[0], 'OPEN', y=.5 if self.count < 12 else .2), ''
+                return np.zeros((480, 640, 3), dtype=np.uint8), (Hand(
+                    clock[0], 'OPEN', x=.75, y=.5 if self.count < 12 else .2),), ''
 
         keys = iter([ord('g')]+[-1]*18+[27])
         def keypress(_):
@@ -204,7 +223,8 @@ class TrainingIntegrationTests(unittest.TestCase):
                     patch.object(app.time, 'monotonic', side_effect=lambda: clock[0]), \
                     patch.object(cv2, 'imshow'), patch.object(cv2, 'getWindowProperty', return_value=1), \
                     patch.object(cv2, 'waitKey', side_effect=keypress), patch.object(cv2, 'destroyAllWindows'), \
-                    patch('sys.argv', ['gesture_control.py', '--model', str(model), '--live', '--robot', '127.0.0.1']):
+                    patch('sys.argv', ['gesture_control.py', '--model', str(model), '--rules',
+                                        '--live', '--robot', '127.0.0.1']):
                 app.main()
         self.assertTrue(any(cmd == 'drive' and fields.get('l', 0) > 0 for cmd, fields in packets))
         self.assertEqual(packets[-1][0], 'stop')
@@ -218,32 +238,35 @@ class TrainingIntegrationTests(unittest.TestCase):
                 directory = root/'data'/f's{s}'
                 directory.mkdir(parents=True)
                 for i, label in enumerate(LABELS):
-                    x = rng.normal(0, .04, (30, FEATURE_COUNT))
-                    x[:, i] += 2.
-                    np.savez_compressed(directory/f'{label}.npz', X=x, label=np.array(label),
-                                        session=np.array(f's{s}'), feature_version=np.array(FEATURE_VERSION))
+                    for hand in HANDS:
+                        x = rng.normal(0, .04, (30, FEATURE_COUNT))
+                        x[:, i] += 2.
+                        np.savez_compressed(directory/f'{label}_{hand}.npz', X=x, label=np.array(label),
+                                            hand=np.array(hand), session=np.array(f's{s}'),
+                                            feature_version=np.array(FEATURE_VERSION))
             output = root/'model.npz'
             report = train(root/'data', output, iterations=120)
             model = GestureModel(output)
             self.assertTrue(output.with_suffix('.report.json').exists())
             self.assertFalse(report['hardware_validated'])
             self.assertEqual(len(report['splits']['train']['sessions']), 3)
+            self.assertEqual(set(report['splits']['test']['with_rejection_per_hand']), set(HANDS))
             feature = np.zeros(FEATURE_COUNT)
             feature[0] = 2.
             label, score, candidate = model.predict(feature)
             self.assertEqual(label, 'OPEN')
             self.assertEqual(candidate, 'OPEN')
-            control = GestureControl()
+            control = GestureControl(gears=(.25,))
             control.start()
             for i in range(10):
                 t = 10+i*.1
-                control.update(Hand(t, label, score=score), t)
+                control.update([Hand(t, label, x=.75, score=score)], t)
             self.assertTrue(control.ready)
             t += .1
-            self.assertEqual(control.update(Hand(t, label, y=.2), t)[:2], (.25, .25))
+            self.assertEqual(control.update([Hand(t, label, x=.75, y=.2)], t)[:2], (.25, .25))
             t += .1
             rejected = gated_labels(np.ones((1, 8))/8, model.classes, model.threshold, model.margin)[0]
-            self.assertEqual(control.update(Hand(t, rejected, y=.2), t)[:2], (0., 0.))
+            self.assertEqual(control.update([Hand(t, rejected, x=.75, y=.2)], t)[:2], (0., 0.))
             self.assertFalse(control.ready)
             with self.assertRaisesRegex(ValueError, 'already exists'):
                 train(root/'data', output)

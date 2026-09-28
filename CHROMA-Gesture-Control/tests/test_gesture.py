@@ -4,108 +4,174 @@ import socket
 import time
 import unittest
 
-from gesture_logic import GestureControl, Hand, RobotLink, classify_landmarks
+from gesture_logic import CANNED, GestureControl, Hand, RobotLink, canned_pose, classify_landmarks, duty
+
+DRIVE_X, CMD_X = .75, .25  # centres of the drive (screen-right) and command halves
 
 
 class GestureTests(unittest.TestCase):
     def setUp(self):
-        self.c = GestureControl()
+        self.c = GestureControl(gears=(.2, .5))
         self.c.start()
         self.t = 10.
 
-    def frame(self, pose='OPEN', x=.5, y=.5, dt=.1):
+    def frame(self, pose='OPEN', x=DRIVE_X, y=.5, dt=.1, command=None):
+        """One tick with a drive hand (pose=None: absent) and optional command hand."""
         self.t += dt
-        return self.c.update(Hand(self.t, pose, x, y), self.t)
+        hands = []
+        if pose is not None:
+            hands.append(Hand(self.t, pose, x, y))
+        if command is not None:
+            hands.append(Hand(self.t, command, CMD_X, .5))
+        return self.c.update(hands, self.t)
 
-    def hold(self, pose='OPEN', n=8, x=.5, y=.5):
-        results = [self.frame(pose, x, y) for _ in range(n)]
-        return [r[2] for r in results if r[2]]
+    def hold(self, pose='OPEN', n=8, x=DRIVE_X, y=.5, command=None):
+        results = [self.frame(pose, x, y, command=command) for _ in range(n)]
+        return [e for r in results for e in r[2]]
 
     def ready(self):
         self.hold()
         self.assertTrue(self.c.ready)
 
+    def command(self, pose, n=12):
+        return self.hold(None, n=n, command=pose)
+
     def test_preview_requires_explicit_start(self):
         self.c.pause()
         self.hold()
-        self.assertEqual(self.frame(x=.8), (0., 0., None))
+        self.assertEqual(self.frame(x=.95), (0., 0., []))
 
     def test_neutral_required_before_motion(self):
-        self.hold(x=.8)
+        self.hold(x=.95)
         self.assertFalse(self.c.ready)
         self.ready()
-        self.assertEqual(self.frame(y=.2), (.25, .25, None))
+        self.assertEqual(self.frame(y=.2), (.2, .2, []))
 
     def test_directions(self):
         self.ready()
-        self.assertEqual(self.frame(y=.8)[:2], (-.25, -.25))
-        self.assertEqual(self.frame(x=.8)[:2], (.15, -.15))
-        self.assertEqual(self.frame(x=.2)[:2], (-.15, .15))
+        self.assertEqual(self.frame(y=.8)[:2], (-.2, -.2))
+        r, l = self.frame(x=.95)[:2], self.frame(x=.55)[:2]
+        self.assertAlmostEqual(r[0], .12)
+        self.assertAlmostEqual(r[1], -.12)
+        self.assertAlmostEqual(l[0], -.12)
         self.assertEqual(self.frame()[:2], (0., 0.))
+
+    def test_drive_hand_crossing_midline_stops(self):
+        self.ready()
+        self.assertEqual(self.frame(x=.45)[:2], (0., 0.))
+        self.assertFalse(self.c.ready)
+
+    def test_two_hands_on_one_side_stop_everything(self):
+        self.ready()
+        self.t += .1
+        hands = [Hand(self.t, 'OPEN', .9, .2), Hand(self.t, 'OPEN', .8, .2)]
+        self.assertEqual(self.c.update(hands, self.t), (0., 0., []))
+        self.assertFalse(self.c.ready)
 
     def test_missing_hand_stops_and_requires_neutral(self):
         self.ready()
         self.frame(y=.2)
-        self.assertEqual(self.c.update(None, self.t), (0., 0., None))
-        self.assertEqual(self.frame(y=.2), (0., 0., None))
+        self.assertEqual(self.c.update([], self.t), (0., 0., []))
+        self.assertEqual(self.frame(y=.2), (0., 0., []))
         self.ready()
 
     def test_frozen_result_cannot_sustain_drive(self):
         self.ready()
         self.frame(y=.2)
-        old = Hand(self.t, 'OPEN', .5, .2)
-        self.assertEqual(self.c.update(old, self.t+.21), (0., 0., None))
+        old = Hand(self.t, 'OPEN', DRIVE_X, .2)
+        self.assertEqual(self.c.update([old], self.t+.21), (0., 0., []))
         self.assertFalse(self.c.ready)
 
     def test_repeated_result_cannot_complete_dwell(self):
-        first = Hand(self.t, 'OPEN')
+        first = Hand(self.t, 'OPEN', DRIVE_X)
         for dt in (.01, .05, .1, .15, .19):
-            self.c.update(first, self.t+dt)
+            self.c.update([first], self.t+dt)
         self.assertFalse(self.c.ready)
 
     def test_unknown_and_fist_stop(self):
         for pose in ('UNKNOWN', 'FIST', 'ONE'):
             self.ready()
-            self.assertEqual(self.frame(pose), (0., 0., None))
+            self.assertEqual(self.frame(pose), (0., 0., []))
             self.assertFalse(self.c.ready)
 
     def test_bad_timestamp_coordinates_rejected(self):
-        for hand in (Hand(self.t+1, 'OPEN'), Hand(self.t, 'OPEN', math.nan),
-                     Hand(self.t, 'OPEN', 2), Hand(math.inf, 'OPEN')):
-            self.assertEqual(self.c.update(hand, self.t), (0., 0., None))
+        for hand in (Hand(self.t+1, 'OPEN', DRIVE_X), Hand(self.t, 'OPEN', math.nan),
+                     Hand(self.t, 'OPEN', 2), Hand(math.inf, 'OPEN', DRIVE_X)):
+            self.assertEqual(self.c.update([hand], self.t), (0., 0., []))
 
     def test_frame_gap_disarms_even_if_new_frame_is_fresh(self):
         self.ready()
-        self.assertEqual(self.frame(y=.2, dt=.5), (0., 0., None))
+        self.assertEqual(self.frame(y=.2, dt=.5), (0., 0., []))
         self.assertFalse(self.c.ready)
 
-    def test_mode_switch_only_once_during_held_v(self):
-        self.ready()
-        self.hold('V', n=25)
-        self.assertEqual(self.c.mode, 'ARM')
-        self.assertFalse(self.c.ready)
-        self.ready()
-        self.hold('V', n=12)
-        self.assertEqual(self.c.mode, 'DRIVE')
+    def test_command_needs_open_rearm_between_commands(self):
+        self.assertEqual(self.command('ONE'), [])            # never armed
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('ONE'), [('grip', 'open')])
+        self.assertEqual(self.command('THREE'), [])          # no OPEN in between
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('THREE'), [('grip', 'close')])
 
-    def test_arm_actions_one_shot_with_neutral_between(self):
-        self.hold('V', n=12)
-        for pose, expected in [('ONE', ('grip', 'open')), ('THREE', ('grip', 'close'))]:
-            self.ready()
-            self.assertEqual(self.hold(pose, n=20), [expected])
-            self.assertEqual(self.hold(pose, n=10), [])
+    def test_command_dwell_interrupted_by_hand_loss(self):
+        self.command('OPEN', n=5)
+        self.command('ONE', n=3)
+        self.frame(None)
+        self.assertEqual(self.command('ONE', n=15), [])
 
-    def test_arm_dwell_interrupted_by_hand_loss(self):
-        self.hold('V', n=12)
+    def test_gears_shift_and_clamp(self):
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('THUMB_UP'), [('gear', 2)])
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('THUMB_UP'), [('gear', 2)])  # already top gear
         self.ready()
-        self.hold('ONE', n=3)
-        self.c.update(None, self.t)
-        self.assertEqual(self.hold('ONE', n=15), [])
+        self.assertEqual(self.frame(y=.2)[:2], (.5, .5))
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('THUMB_DOWN'), [('gear', 1)])
+        self.assertEqual(self.c.speed, .2)
 
-    def test_arm_never_drives(self):
-        self.hold('V', n=12)
-        self.ready()
-        self.assertEqual(self.frame(x=.8), (0., 0., None))
+    def test_both_hands_at_once_drive_and_grip(self):
+        self.hold(n=8, command='OPEN')
+        self.assertTrue(self.c.ready and self.c.armed)
+        results = [self.frame(y=.2, command='THREE') for _ in range(6)]
+        self.assertTrue(all(r[:2] == (.2, .2) for r in results))
+        self.assertEqual([e for r in results for e in r[2]], [('grip', 'close')])
+
+    def test_paused_only_accepts_start_and_stop(self):
+        self.c.pause()
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('ONE'), [])
+        self.assertEqual(self.command('V', n=12), [('start', None)])
+        self.assertEqual(self.command('FIST', n=8), [('stop', None)])
+
+    def test_fist_stop_needs_no_rearm_and_fires_once(self):
+        self.assertEqual(self.command('FIST', n=8), [('stop', None)])
+        self.c.pause()  # what gesture_control does on stop
+        self.assertEqual(self.command('FIST', n=20), [])
+
+    def test_swap_hands(self):
+        c = GestureControl(gears=(.2,), swap=True)
+        c.start()
+        t = 10.
+        for _ in range(8):
+            t += .1
+            c.update([Hand(t, 'OPEN', CMD_X, .5)], t)
+        self.assertTrue(c.ready)
+        t += .1
+        self.assertEqual(c.update([Hand(t, 'OPEN', CMD_X, .2)], t)[:2], (.2, .2))
+
+    def test_mediapipe_canned_gestures_map_to_commands(self):
+        self.assertEqual(canned_pose('Pointing_Up', .9, .7), 'ONE')
+        self.assertEqual(canned_pose('Pointing_Up', .6, .7), 'UNKNOWN')
+        self.assertEqual(canned_pose('Something_New', .99, .7), 'UNKNOWN')
+        self.assertEqual(set(CANNED.values()) - {'UNKNOWN', 'OPEN'},
+                         {'FIST', 'V', 'ONE', 'THUMB_UP', 'THUMB_DOWN', 'ILOVEYOU'})
+        self.command('OPEN', n=5)
+        self.assertEqual(self.command('ILOVEYOU'), [('grip', 'close')])
+
+    def test_duty_matches_firmware_mapping(self):
+        self.assertEqual(duty(0), 0.)
+        self.assertAlmostEqual(duty(.18), .7622)
+        self.assertAlmostEqual(duty(-1), 1.)
 
     def test_classifier_rejects_invalid_landmarks(self):
         self.assertEqual(classify_landmarks([]), 'UNKNOWN')
@@ -131,8 +197,8 @@ class GestureTests(unittest.TestCase):
 
     def test_backward_timestamp_disarms(self):
         self.ready()
-        self.assertEqual(self.c.update(Hand(self.t-.05, 'OPEN', .5, .2), self.t),
-                         (0., 0., None))
+        self.assertEqual(self.c.update([Hand(self.t-.05, 'OPEN', DRIVE_X, .2)], self.t),
+                         (0., 0., []))
         self.assertFalse(self.c.ready)
 
 
@@ -155,6 +221,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(len({p['s'] for p in packets}), 1)
                 self.assertEqual(len(packets[0]['s']), 12)
                 self.assertEqual(packets[1]['l'], .25)
+                receiver.sendto(b'{"state":"DONE"}', address)  # not a robot_ctrl state
                 receiver.sendto(b'{"state":"RUNNING"}', address)
                 deadline = time.monotonic()+1
                 while link.status is None and time.monotonic() < deadline:
@@ -162,7 +229,7 @@ class ProtocolTests(unittest.TestCase):
                     time.sleep(.001)
                 self.assertTrue(link.running(time.monotonic()))
                 self.assertFalse(link.running(link.status_at+.61))
-                link.status = {'state': 'ESTOP'}
+                link.status = {'state': 'IDLE'}
                 self.assertFalse(link.running(time.monotonic()))
             finally:
                 link.close()

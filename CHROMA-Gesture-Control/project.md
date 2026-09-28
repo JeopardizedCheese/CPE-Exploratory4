@@ -1,6 +1,6 @@
 # CHROMA Gesture Control — Project Context
 
-สถานะ: 25 กันยายน 2026
+สถานะ: 29 กันยายน 2026 (ควบคุมสองมือ, ตรงกับ `firmware/robot_ctrl` ปัจจุบัน)
 
 ## เป้าหมายและขอบเขต
 
@@ -17,11 +17,13 @@ planner, firmware, Wi-Fi credentials หรือข้อมูลฝึกส�
 Operator webcam (mirrored image)
     -> pretrained MediaPipe Hand Landmarker: 21 landmarks
     -> wrist-relative, palm-size-normalized xyz: 63 features
-    -> custom MLP classifier OR original geometric rules
+    -> MediaPipe Gesture Recognizer canned gestures (default)
+       OR custom MLP classifier OR original geometric rules
     -> confidence / top-two margin rejection -> UNKNOWN
-    -> GestureControl: mode, neutral rearm, dwell, freshness checks
+    -> GestureControl: screen-half roles (right = drive, left = command),
+       gears, neutral rearm, dwell, freshness checks
     -> preview HUD (default, no robot connection)
-    -> optional UDP v3 -> existing ESP32 robot_ctrl firmware
+    -> optional UDP v3 -> ESP32 robot_ctrl firmware (IDLE / RUNNING)
 ```
 
 MediaPipe ไม่ได้ถูกเทรนใหม่ ส่วนที่เราเทรนคือ MLP จำแนกท่าจากจุดมือ
@@ -35,7 +37,7 @@ MLP ใช้ชั้นซ่อน 64 และ 32 หน่วย ฝึก�
 | File | Responsibility |
 | --- | --- |
 | gesture_control.py | Camera/inference worker, preview HUD, optional live controller |
-| gesture_logic.py | Hand data, gesture state machine, UDP v3 transport |
+| gesture_logic.py | Hand data, two-hand state machine, gears, UDP v3 transport |
 | gesture_model.py | Shared features, confidence rejection, portable MLP loading/export |
 | gesture_collect.py | Human-labeled recording, save/discard/undo/resume sessions |
 | gesture_train.py | Data validation, session split, training, evaluation report |
@@ -73,13 +75,14 @@ Google มาไว้ที่ `models/hand_landmarker.task` ZIP ไม่ร�
 .\.venv-gesture\Scripts\python.exe gesture_collect.py --camera 0
 ```
 
-เลือกคลาสด้วยเลข 1–8 กด R มี countdown 2 วินาทีแล้วเก็บ 60 ตัวอย่าง
+เลือกคลาสด้วยเลข 1–8 เลือกมือด้วย H กด R มี countdown 2 วินาทีแล้วเก็บ 60 ตัวอย่าง
 เก็บได้สูงสุด 5 ตัวอย่าง/วินาที บันทึกเฉพาะจุดมือ ไม่บันทึกภาพ/วิดีโอ ไม่อัปโหลด
 S บันทึกและหยุด, D ทิ้ง take ที่กำลังเก็บ, U ยกเลิกไฟล์ล่าสุดโดยย้ายเข้า discarded,
 Esc บันทึกส่วนที่เก็บแล้วและออก
 
-เก็บครบทุกคลาสในอย่างน้อย 5 sessions ที่มีความต่างจริงของมุม/ระยะ/แสง
-แต่ละ session ตั้งเป้า 60–100 ตัวอย่าง/คลาส; ตัวฝึกตรวจขั้นต่ำ 30
+เก็บครบทุกคลาส ทั้งมือซ้ายและขวา ในอย่างน้อย 5 sessions ที่มีความต่างจริงของมุม/ระยะ/แสง
+แต่ละ session ตั้งเป้า 60 ตัวอย่าง/คลาส/มือ (16 takes); ตัวฝึกตรวจขั้นต่ำ 30 ต่อคลาสต่อมือ
+ข้อมูลมือเดียวชุดเดิมย้ายไป `gesture_data_v1/` (โมเดลเดิม `models/gesture_mlp.npz`) เก็บไว้สำรอง
 เริ่ม session ใหม่ด้วยการปิด–เปิดโปรแกรม หากต้องการเก็บต่อ session เดิม:
 
 ```powershell
@@ -93,18 +96,18 @@ Esc บันทึกส่วนที่เก็บแล้วและอ�
 .\.venv-gesture\Scripts\python.exe gesture_train.py
 ```
 
-ได้ `models/gesture_mlp.npz` และ `models/gesture_mlp.report.json`
+ได้ `models/gesture_v2.npz` และ `models/gesture_v2.report.json` (รายงานแยกผลมือซ้าย/ขวาด้วย)
 แบ่งเป็น train/validation/test ตาม session ทั้งกลุ่ม: 5 sessions แบ่ง 3/1/1
 Scaler และน้ำหนักเรียนรู้จาก train เท่านั้น ปรับค่าตัดสินจาก validation
 รายงานรวม confusion matrix, recall แต่ละคลาส, wrong active commands,
 UNKNOWN-to-active rate และผลกฎเดิมบนข้อมูลชุดเดียวกัน
 หากนำผล test ไปปรับโมเดลอีก ต้องเก็บ test ใหม่ที่ไม่เคยใช้
-ตัวฝึกไม่เขียนทับโมเดลเดิม ให้ใช้ `--output models/gesture_v2.npz`
+ตัวฝึกไม่เขียนทับโมเดลเดิม ให้ใช้ `--output models/gesture_v3.npz`
 
 ### 4. Preview your model
 
 ```powershell
-.\.venv-gesture\Scripts\python.exe gesture_control.py --camera 0 --classifier models/gesture_mlp.npz
+.\.venv-gesture\Scripts\python.exe gesture_control.py --camera 0 --classifier models/gesture_v2.npz
 ```
 
 หน้าจอต้องขึ้น PREVIEW | MLP ถ้าไม่ระบุ classifier จะขึ้น RULES
@@ -112,37 +115,40 @@ UNKNOWN-to-active rate และผลกฎเดิมบนข้อมูล
 
 ## Labels and control
 
-| Label | Example | Function |
+ที่มาของท่า: ค่าเริ่มต้น MediaPipe Gesture Recognizer (`models/gesture_recognizer.task`,
+คะแนน < `--min-score` 0.7 = UNKNOWN), หรือ `--classifier` MLP ที่เทรนเอง, หรือ `--rules`
+
+จอแบ่งครึ่ง: มือครึ่งขวา = มือขับ, ครึ่งซ้าย = มือสั่งงาน (`--swap-hands` สลับ)
+ตัดสินจากตำแหน่งบนจอ ไม่ใช้ handedness ของ MediaPipe ทั้งสองมือทำงานพร้อมกันได้
+
+| Label | มือขับ (ขวา) | มือสั่งงาน (ซ้าย) |
 | --- | --- | --- |
-| OPEN | แบมือ | กลางกรอบเพื่อพร้อมควบคุม; ใน DRIVE เลื่อนมือเพื่อขับ |
-| FIST | กำมือ | หยุดล้อ |
-| V | นิ้วชี้+กลาง | ค้าง 0.8 วินาทีสลับ DRIVE / ARM |
-| ONE | นิ้วชี้ | เปิดคีบใน ARM |
-| THREE | นิ้วชี้+กลาง+นาง | ปิดคีบใน ARM |
-| THUMB_UP | โป้งขึ้น | ยกใน ARM |
-| THUMB_DOWN | โป้งลง | ลดใน ARM |
-| UNKNOWN | ท่าอื่น/ระหว่างเปลี่ยนท่า | ไม่ออกคำสั่งเคลื่อนที่ใหม่ |
+| OPEN | ในกรอบ 0.5 s = พร้อม; เลื่อนขึ้น/ลง/ซ้าย/ขวา = ขับ | ท่าพัก 0.3 s ก่อนสั่งทุกครั้ง |
+| FIST | หยุดล้อ | ค้าง 0.5 s: `stop` → IDLE (ไม่ต้องพักก่อน) |
+| V | หยุดล้อ | ค้าง 0.8 s: `start` → RUNNING |
+| ONE | หยุดล้อ | ค้าง 0.4 s: `grip open` |
+| THREE / ILOVEYOU 🤟 | หยุดล้อ | ค้าง 0.4 s: `grip close` (MediaPipe ไม่มี THREE ใช้ 🤟) |
+| THUMB_UP | หยุดล้อ | ค้าง 0.4 s: เพิ่มเกียร์ |
+| THUMB_DOWN | หยุดล้อ | ค้าง 0.4 s: ลดเกียร์ |
+| UNKNOWN | หยุดล้อ | ไม่ทำอะไร |
 
-G เริ่ม/กลับมาควบคุม; แบมือกลางกรอบ 0.5 วินาทีเพื่อ enable
-คำสั่งแขนค้าง 0.4 วินาทีและต้องกลับท่ากลางก่อนคำสั่งต่อไป
-Space พักล้อ, X ESTOP, R reset, Esc ออก
+เกียร์เริ่มต้น `--gears 0.15,0.35,0.6` (duty ≈ 0.75 / 0.81 / 0.88) เริ่มที่เกียร์ 1
+firmware แปลง 0<|cmd|≤1 เป็น duty `MIN_DUTY 0.71`–1.0 แบบเส้นตรง จึงเป็นความเร็วต่างกันจริง
+ระหว่าง PAUSED มือสั่งงานใช้ได้แค่ V และ FIST; สองมืออยู่ครึ่งเดียวกัน → หยุดทุกอย่าง
+คีย์บอร์ด: G = start, Space = พักล้อฝั่ง PC, X = stop (IDLE), Esc = ออก
 ทิศขับอ้างอิงหัวหุ่น ไม่ใช่พิกัดสนาม; ภาพกล้องเป็นภาพสะท้อน
-ใช้มือเดียวและทดสอบทุกท่ากับแสงจริง
 
-## Robot interface (external firmware required)
+## Robot interface
 
-ใช้ได้กับ `robot_ctrl` v3 ใน CPE-Exploratory3-main.zip ที่ตรวจไว้
-ไม่ใช่ `esp_link` v2 แพ็กเกจนี้ไม่รวม firmware และไม่ใช่ระบบหุ่นครบชุด
-ต้องตั้งขามอเตอร์ มุมเซอร์โว compile/flash และตรวจระบบหยุดบนฮาร์ดแวร์ก่อน
-
-เมื่อพร้อมทดสอบหุ่น จึงระบุ `--robot IP --live` เพิ่มเอง:
+ใช้กับ `firmware/robot_ctrl` ใน repo นี้ (ไม่ใช่ `esp_link` v2) แพ็กเกจนี้ไม่รวม firmware
+firmware ปัจจุบันมีสถานะแค่ **IDLE / RUNNING** ไม่มี DONE, ESTOP ค้าง, reset หรือตัวจับเวลา 5 นาที
 
 ```powershell
-.\.venv-gesture\Scripts\python.exe gesture_control.py --camera 0 --classifier models/gesture_mlp.npz --robot 192.168.1.50 --live --speed 0.25
+.\.venv-gesture\Scripts\python.exe gesture_control.py --camera 0 --live
 ```
 
-แทน IP ด้วยที่อยู่หุ่น UDP port 4211 โดย default ตัวควบคุมส่ง drive ประมาณ 20 Hz
-ห้ามเปิด controller อีกตัวส่งแข่งกัน; speed เป็นสัดส่วนคำสั่ง ไม่ใช่ความเร็วที่วัดได้
+`--robot` ค่าเริ่มต้น `10.178.188.50` (IP คงที่ใน `config.h`) UDP port 4211 ส่ง drive ~20 Hz
+firmware รับผู้ส่งทีละราย ผู้ส่งใหม่ต้องรอให้ตัวเดิมเงียบเกิน 300 ms: ปิด teleop/autonomy ก่อน
 
 แพ็กเก็ต JSON พื้นฐาน:
 
@@ -150,24 +156,27 @@ Space พักล้อ, X ESTOP, R reset, Esc ออก
 {"v":3,"s":"012345abcdef","q":1,"c":"drive","l":0.0,"r":0.0}
 ```
 
-- `s`: session ID ใหม่ต่อการเปิดโปรแกรม เป็น hex ยาว 12 ตัว
-- `q`: sequence เพิ่มขึ้นทุกแพ็กเก็ต
-- `drive`: l/r ในช่วง -1..1; ล้อศูนย์เป็นหยุดปกติ
-- `start`, `stop`, `reset`: คำสั่ง state; stop เข้า ESTOP แบบค้าง
-- `grip`: p เป็น open/close; `lift`: p เป็น up/down
-- firmware ต้องตอบสถานะกลับ IP/port ผู้ส่ง มี `state` เป็น IDLE/RUNNING/DONE/ESTOP
-- โปรแกรมรอสถานะ RUNNING ก่อนอนุญาตส่งคำสั่งเคลื่อนที่จากมือ
+- `s`: session ID ใหม่ต่อการเปิดโปรแกรม เป็น hex ยาว 12 ตัว; `q`: sequence เพิ่มขึ้นทุกแพ็กเก็ต
+- `drive`: l/r ในช่วง -1..1 รับเฉพาะใน RUNNING; ศูนย์ = หยุด
+- `start`: IDLE → RUNNING; `stop`: → IDLE (ไม่ค้างสถานะ)
+- `grip`: p เป็น open (0°) / close (40°) ทำงานได้ทั้ง IDLE และ RUNNING; ไม่มี `lift`
+- `servo`: มุมดิบสำหรับ calibrate (ตัวควบคุมนี้ไม่ใช้); คำสั่งอื่นแค่ต่ออายุ link
+- สถานะตอบกลับทุก 200 ms: `state`, `why`, `l`, `r`, `rx_age_ms`, `rssi`, `servo` (list, ใช้ `servo[0]`)
+- โปรแกรมรอสถานะ RUNNING ก่อนอนุญาตให้มือขับส่งคำสั่งเคลื่อนที่
+- ทดลองโดยไม่มีหุ่น: `python fake_robot.py` ที่ root ของ repo แล้ว `--live --robot 127.0.0.1`
 
 ## Safety behavior and limitations
 
-- ภาพ/ผลมือเก่ากว่า 200 ms, ไม่มีมือ หรือหลายมือ -> หยุดล้อและต้องกลับท่ากลาง
+- ภาพ/ผลมืออายุเกิน 200 ms, ไม่มีมือขับ, มือขับข้ามเส้นกลาง หรือสองมือครึ่งเดียวกัน -> หยุดล้อและต้องกลับท่ากลาง
 - Camera/inference แยก thread เพื่อให้ตัวควบคุมตรวจ timeout ได้แม้ camera read ค้าง
-- สถานะหุ่นหายเกิน 600 ms หรือไม่ใช่ RUNNING -> พัก ต้องกด G ใหม่
-- firmware ที่เข้าคู่กันมี drive watchdog 300 ms, timer 5 นาที และปุ่มหยุดบนหุ่น
+- สถานะหุ่นหายเกิน 600 ms หรือไม่ใช่ RUNNING -> พัก ต้องกด G / V ใหม่
+- firmware: drive watchdog 300 ms และหยุดล้อเมื่อ Wi-Fi หลุด
+- **ไม่มีปุ่มหยุดฉุกเฉินบนหุ่นและไม่มีตัวจับเวลาหมดรอบ** ใน firmware ปัจจุบัน
+  `stop` ผ่านเครือข่ายคือทางหยุดเดียวจากซอฟต์แวร์ ต้องมีคนพร้อมยกหุ่น/ตัดไฟ
 - ไม่มั่นใจ (<0.9) หรือคะแนนอันดับหนึ่งห่างอันดับสอง <0.2 -> UNKNOWN โดย default
 - คะแนน softmax ไม่ใช่ความแม่นยำที่ calibrate แล้ว และอาจมั่นใจผิดกับท่าใหม่ได้
-- หยุดล้อ/มือหายไม่ยกเลิกการเคลื่อนเซอร์โวที่สั่งไปแล้ว; X ขอ ESTOP ผ่านเครือข่าย
-- UDP อาจสูญหายและไม่มีการยืนยันว่าแขนถึงตำแหน่งจริง ต้องคงปุ่มหยุดบนหุ่นไว้
+- หยุดล้อ/มือหายไม่ยกเลิกการเคลื่อนเซอร์โวที่สั่งไปแล้ว
+- UDP อาจสูญหาย มุม servo ที่หุ่นรายงานคือค่าที่ firmware สั่ง ไม่ใช่มุมที่วัดจริง
 - ตรวจอายุจากก่อน camera read ไม่ได้ตรวจภาพเก่าที่ driver ส่งซ้ำด้วยเวลาใหม่
 - UNKNOWN training ต้องมีมือที่ตรวจพบ กรณีไม่พบมือถูกจัดการนอก classifier
 - รอบถ่ายใหม่ไม่ได้เท่ากับผู้ใช้ใหม่ ต้องประเมินผู้ควบคุม/สภาพจริงที่ต้องการรองรับ
@@ -178,22 +187,23 @@ Space พักล้อ, X ESTOP, R reset, Esc ออก
 .\.venv-gesture\Scripts\python.exe -m unittest discover -s tests -p "test_gesture*.py" -v
 ```
 
-29 tests ผ่านใน environment ที่พัฒนา รวม UDP loopback, timeout/rearm,
-collector save/undo/resume ผ่านกล้องและหน้าจอจำลอง, session split,
-MLP train/export/load บนข้อมูลสังเคราะห์ และการรับสถานะหลัง poll
-MediaPipe hand model เคยโหลดและประมวลผลภาพว่างผ่านแล้ว
+37 tests ผ่าน (29 ก.ย. 2026) รวม UDP loopback, การแบ่งมือตามครึ่งจอ, เกียร์,
+คำสั่งพร้อมกันสองมือ, start/stop จากท่ามือ, collector ป้ายมือ, split ที่ต้องครบทั้งสองมือ
+และ train/export/load บนข้อมูลสังเคราะห์
+ทดสอบ `gesture_control.py --live` กับ `fake_robot.py` ด้วยท่ามือจำลองผ่าน:
+V → RUNNING, ขับเกียร์ 1 (0.15) → 2 (0.35), ปิดคีบระหว่างขับ (servo 40), FIST → IDLE
 
-ยังไม่มีชุดข้อมูลมือจริงของผู้ใช้หรือโมเดล MLP สำหรับใช้งานที่ฝึกจากข้อมูลนั้น
-ยังไม่ได้ยืนยันความแม่นยำกล้องจริง latency ระยะหยุด หรือการควบคุมหุ่นจริง
-ผลสังเคราะห์ตรวจความถูกต้องของซอฟต์แวร์ ไม่ใช่หลักฐานว่าแม่นกว่า Teachable Machine
+ใช้ MediaPipe canned model เป็นค่าเริ่มต้น; ภาพตัวอย่างของ Google อ่านถูก 4/4
+ข้อมูลสองมือที่เริ่มเก็บถูกลบแล้ว ยังไม่มี `models/gesture_v2.npz` (การเทรนเองเป็นทางเลือก)
+ยังไม่ได้ยืนยันกับกล้องจริง, MediaPipe กับสองมือพร้อมกัน, latency, ระยะหยุด หรือหุ่นจริง
 
 ## Next steps
 
-1. ติดตั้งบนเครื่องปลายทางและเลือกกล้องผู้ควบคุม
-2. เก็บข้อมูลจริง 5 sessions ให้ครบทุกคลาส
-3. เทรน อ่าน validation report และทดลอง MLP ใน preview
-4. ตรวจท่าที่สับสนและท่าช่วงเปลี่ยน เก็บข้อมูลเพิ่มตามที่พบ
-5. ทดสอบบนหุ่นที่ตั้งค่าพร้อมแล้ว เริ่มล้อยกพ้นพื้นก่อนลงสนาม
+1. ทดลอง `gesture_control.py` (MediaPipe) ใน preview ด้วยเว็บแคมจริง ทั้งสองมือ
+2. ปรับ `--min-score` ถ้ามี UNKNOWN มากไป (ลด) หรือคำสั่งหลุดผิด (เพิ่ม)
+3. ถ้าท่าไหนอ่านไม่ได้จริง ค่อยเทรน MLP เองตาม TRAIN_GESTURES_TH.md
+4. ตรวจท่าที่สับสนและท่าช่วงเปลี่ยน โดยเฉพาะตอนสองมืออยู่ใกล้เส้นกลาง
+5. ทดสอบกับ `fake_robot.py` แล้วหุ่นจริงโดยยกล้อพ้นพื้นก่อนลงสนาม
 
 ## References
 

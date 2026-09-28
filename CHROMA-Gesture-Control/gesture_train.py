@@ -9,17 +9,19 @@ import warnings
 import numpy as np
 
 from gesture_logic import classify_landmarks
-from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, LABELS, GestureModel,
+from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABELS, GestureModel,
                            export_model, gated_labels)
 
-ACTIVE = {'OPEN', 'V', 'ONE', 'THREE', 'THUMB_UP', 'THUMB_DOWN'}
+# Every label except UNKNOWN now triggers something (FIST = stop, V = start).
+ACTIVE = set(LABELS) - {'UNKNOWN'}
+MIN_SAMPLES = 30
 
 
 def load_recordings(directory):
     files = sorted(Path(directory).glob('*/*.npz'))
     if not files:
         raise ValueError('No recordings found. Run gesture_collect.py first.')
-    xs, ys, groups, inventory = [], [], [], []
+    xs, ys, groups, hands, inventory = [], [], [], [], []
     seen = set()
     for path in files:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -30,35 +32,41 @@ def load_recordings(directory):
             if str(data['feature_version'].item()) != FEATURE_VERSION:
                 raise ValueError(f'Wrong feature version: {path}')
             x = np.asarray(data['X'], dtype=float)
+            if 'hand' not in data.files:
+                raise ValueError(f'Legacy one-hand recording without a hand tag: {path}. '
+                                 'Keep old sessions in gesture_data_v1/ and record new two-hand sessions.')
             label, session = str(data['label'].item()), str(data['session'].item())
+            hand = str(data['hand'].item())
             if (x.ndim != 2 or x.shape[1] != FEATURE_COUNT or len(x) == 0
                     or not np.isfinite(x).all() or np.max(np.abs(x)) > 15
-                    or label not in LABELS or not session):
+                    or label not in LABELS or hand not in HANDS or not session):
                 raise ValueError(f'Invalid recording: {path}')
         xs.append(x)
         ys.extend([label]*len(x))
         groups.extend([session]*len(x))
-        inventory.append({'path': str(path.resolve()), 'sha256': digest,
-                          'label': label, 'session': session, 'samples': len(x)})
-    return np.concatenate(xs), np.array(ys), np.array(groups), inventory
+        hands.extend([hand]*len(x))
+        inventory.append({'path': str(path.resolve()), 'sha256': digest, 'label': label,
+                          'hand': hand, 'session': session, 'samples': len(x)})
+    return np.concatenate(xs), np.array(ys), np.array(groups), np.array(hands), inventory
 
 
-def session_counts(y, groups):
-    return {str(g): {label: int(np.sum((groups == g) & (y == label))) for label in LABELS}
+def session_counts(y, groups, hands):
+    return {str(g): {f'{label}/{hand}': int(np.sum((groups == g) & (y == label) & (hands == hand)))
+                     for label in LABELS for hand in HANDS}
             for g in np.unique(groups)}
 
 
-def split_sessions(y, groups, seed=42):
+def split_sessions(y, groups, hands, seed=42):
     """Strictly complete sessions: 60/20/20 with five sessions, by group."""
-    counts = session_counts(y, groups)
+    counts = session_counts(y, groups, hands)
     if len(counts) < 5:
         raise ValueError(f'Need at least 5 independent recording sessions; found {len(counts)}. '
-                         'Record all 8 labels each time, then restart collector for a new session.')
-    incomplete = {g: {label: n for label, n in row.items() if n < 30}
-                  for g, row in counts.items() if min(row.values()) < 30}
+                         'Record all 8 labels with both hands each time, then restart collector for a new session.')
+    incomplete = {g: {key: n for key, n in row.items() if n < MIN_SAMPLES}
+                  for g, row in counts.items() if min(row.values()) < MIN_SAMPLES}
     if incomplete:
-        raise ValueError('Each session needs at least 30 samples of every label. Missing/short: '
-                         + json.dumps(incomplete))
+        raise ValueError(f'Each session needs at least {MIN_SAMPLES} samples of every label '
+                         'from each hand. Missing/short (LABEL/hand): ' + json.dumps(incomplete))
     ordered = np.array(sorted(counts))
     np.random.default_rng(seed).shuffle(ordered)
     holdout = max(1, int(len(ordered)*.2))
@@ -93,8 +101,8 @@ def train(directory, output, seed=42, threshold=.9, margin=.2, iterations=500):
     report_path = output.with_suffix('.report.json')
     if output.exists() or report_path.exists():
         raise ValueError('Output already exists. Choose a new --output filename to preserve your previous model.')
-    x, y, groups, inventory = load_recordings(directory)
-    split = split_sessions(y, groups, seed)
+    x, y, groups, hands, inventory = load_recordings(directory)
+    split = split_sessions(y, groups, hands, seed)
     from sklearn.neural_network import MLPClassifier
     from sklearn.preprocessing import StandardScaler
     import sklearn
@@ -111,7 +119,7 @@ def train(directory, output, seed=42, threshold=.9, margin=.2, iterations=500):
               'hidden_layers': [64, 32], 'seed': seed, 'threshold': threshold, 'margin': margin,
               'scores_are_calibrated_probabilities': False, 'hardware_validated': False,
               'training_iterations': int(classifier.n_iter_), 'training_loss': float(classifier.loss_),
-              'warnings': [str(w.message) for w in caught], 'sessions': session_counts(y, groups),
+              'warnings': [str(w.message) for w in caught], 'sessions': session_counts(y, groups, hands),
               'recordings': inventory, 'splits': {}}
     for name, indices in split.items():
         p = classifier.predict_proba(scaler.transform(x[indices]))
@@ -121,7 +129,10 @@ def train(directory, output, seed=42, threshold=.9, margin=.2, iterations=500):
             'sessions': sorted(set(groups[indices].tolist())),
             'raw_classifier': metrics(y[indices], classifier.classes_[p.argmax(axis=1)]),
             'with_rejection': metrics(y[indices], predicted),
-            'original_rules': metrics(y[indices], baseline)}
+            'original_rules': metrics(y[indices], baseline),
+            'with_rejection_per_hand': {
+                hand: metrics(y[indices][hands[indices] == hand], predicted[hands[indices] == hand])
+                for hand in HANDS}}
     report['interpretation'] = (
         'Frame-level results on held-out sessions, not robot success rates. '
         'UNKNOWN includes modeled other gestures and rejected predictions. '
@@ -145,7 +156,8 @@ def train(directory, output, seed=42, threshold=.9, margin=.2, iterations=500):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data', type=Path, default=Path(__file__).parent/'gesture_data')
-    parser.add_argument('--output', type=Path, default=Path(__file__).parent/'models/gesture_mlp.npz')
+    # models/gesture_mlp.npz is the one-hand v1 model; keep it as the fallback.
+    parser.add_argument('--output', type=Path, default=Path(__file__).parent/'models/gesture_v2.npz')
     parser.add_argument('--inspect', action='store_true', help='Show data counts without training')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--threshold', type=float, default=.9)
@@ -154,8 +166,8 @@ def main():
     args = parser.parse_args()
     try:
         if args.inspect:
-            _, y, groups, _ = load_recordings(args.data)
-            print(json.dumps(session_counts(y, groups), indent=2))
+            _, y, groups, hands, _ = load_recordings(args.data)
+            print(json.dumps(session_counts(y, groups, hands), indent=2))
             return
         report = train(args.data, args.output, args.seed, args.threshold, args.margin, args.iterations)
     except (ValueError, OSError, KeyError) as exc:
@@ -166,6 +178,9 @@ def main():
         print(f'{name}: accuracy={result["accuracy"]:.3f}, '
               f'wrong active={result["wrong_active_commands"]}/{result["samples"]}, '
               f'UNKNOWN outputs={result["unknown_output_rate"]:.1%}')
+        for hand, per_hand in report['splits'][name]['with_rejection_per_hand'].items():
+            print(f'  {HANDS[hand]} hand: accuracy={per_hand["accuracy"]:.3f}, '
+                  f'wrong active={per_hand["wrong_active_commands"]}/{per_hand["samples"]}')
     for warning in report['warnings']:
         print(f'WARNING: {warning}')
     print('Preview the model before connecting a robot. These are frame-level metrics, not physical validation.')

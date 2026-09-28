@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 LABELS = ('OPEN', 'FIST', 'V', 'ONE', 'THREE', 'THUMB_UP', 'THUMB_DOWN', 'UNKNOWN')
+HANDS = {'L': 'LEFT', 'R': 'RIGHT'}  # operator's real hand, chosen in the collector
 FEATURE_VERSION = 'wrist-relative-palm-scale-mirrored-xyz-v1'
 FEATURE_COUNT = 63
 
