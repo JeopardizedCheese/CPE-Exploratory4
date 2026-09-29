@@ -435,15 +435,17 @@ class Planner:
         forecast = self._predict(pose) if self.o['predict_pose'] and not self.wall.active else None
         carrying = -1 if self.state == 'DISCARD' or self._wall_resume_state == 'DISCARD' else self.carrying
         command = self.wall.step(now, pose, observations, carrying, forecast)
-        if command is None:
+        in_wall_state = self.state in ('WALL_RECOVERY', 'WALL_BLOCKED')
+        if command is None and not in_wall_state:
             return None
-        if self.state not in ('WALL_RECOVERY', 'WALL_BLOCKED'):
+        if not in_wall_state:
             self._wall_resume_state = self.state
             self._pulse, self._was_spinning = None, False
             self.motion.clear()
             self.backoff_from = None
         self.debug['reason'] = self.wall.reason
-        if self.wall.completed:
+        # completed, or a retry after WALL_BLOCKED found the robot already safe (moved by hand)
+        if self.wall.completed or command is None:
             resume = self._wall_resume_state
             self._wall_resume_state = None
             self.motion.clear()
@@ -457,7 +459,7 @@ class Planner:
                 self._go('SEARCH', now, 'wall recovered; choose a new approach')
         else:
             self._go('WALL_BLOCKED' if self.wall.failed else 'WALL_RECOVERY', now, self.wall.reason)
-        return *command, []
+        return None if command is None else (*command, [])
 
     def _predict(self, pose):
         """pose moved on by camera_delay_s at the velocity of the last ~0.15 s of poses."""

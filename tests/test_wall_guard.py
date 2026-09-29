@@ -6,8 +6,11 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 from autonomy import DriveSender, Planner
-from wall_guard import WallGuard
+from wall_guard import DEFAULTS as WALL, WallGuard
 from tests.test_autonomy import config, pose
+
+
+P = WALL['wall_pulse_s']     # a drive pulse started at t=.4 by GuardTests.pulse ends at .4+P
 
 
 class GuardTests(unittest.TestCase):
@@ -78,19 +81,22 @@ class GuardTests(unittest.TestCase):
 
     def test_pulse_expires_then_waits_for_new_frame(self):
         guard, _ = self.pulse(pose(100, 600, 180))
-        self.assertAlmostEqual(guard.diagnostics()['wall_command_until'], .5)
-        self.assertEqual(guard.step(.51, pose(130, 600, 180, .51)), (0, 0))
-        self.assertEqual(guard.step(.75, pose(130, 600, 180, .75)), (0, 0))
-        self.assertLess(guard.step(.9, pose(130, 600, 180, .9))[0], 0)
+        end = .4+P
+        self.assertAlmostEqual(guard.diagnostics()['wall_command_until'], end)
+        self.assertEqual(guard.step(end+.01, pose(130, 600, 180, end+.01)), (0, 0))
+        self.assertEqual(guard.step(end+.25, pose(130, 600, 180, end+.25)), (0, 0))
+        self.assertLess(guard.step(end+.4, pose(130, 600, 180, end+.4))[0], 0)
 
     def test_does_not_resume_until_further_inside(self):
         guard, _ = self.pulse(pose(100, 600, 180))
-        guard.step(.51, pose(220, 600, 180, .51))
-        self.assertLess(guard.step(.9, pose(220, 600, 180, .9))[0], 0)
-        guard.step(1.01, pose(280, 600, 180, 1.01))
-        self.assertEqual(guard.step(1.4, pose(280, 600, 180, 1.4)), (0, 0))
+        t = .4+P
+        guard.step(t+.01, pose(220, 600, 180, t+.01))
+        self.assertLess(guard.step(t+.4, pose(220, 600, 180, t+.4))[0], 0)
+        t += .4+P
+        guard.step(t+.01, pose(280, 600, 180, t+.01))
+        self.assertEqual(guard.step(t+.4, pose(280, 600, 180, t+.4)), (0, 0))
         self.assertTrue(guard.completed)
-        self.assertIsNone(guard.step(1.5, pose(280, 600, 180, 1.5)))
+        self.assertIsNone(guard.step(t+.5, pose(280, 600, 180, t+.5)))
 
     def test_no_progress_and_timeout_latch_stop(self):
         for finish, reason in [(3.1, 'wall_no_progress'), (12.1, 'wall_recovery_timeout')]:
@@ -121,6 +127,54 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(guard.step(0, pose(250, 600, 180), forecast=pose(150, 600, 180)), (0, 0))
         self.assertTrue(guard.active)
 
+    def test_motion_from_before_the_stop_is_not_judged_outward(self):
+        # Driving at the wall: after the stop the camera keeps showing the robot coming
+        # closer (~0.2 s delay) and it coasts. That is not the recovery's doing.
+        guard = WallGuard(config())
+        self.assertEqual(guard.step(0, pose(250, 600, 180, 0), forecast=pose(150, 600, 180)), (0, 0))
+        for i in range(1, 13):                    # 60 mm closer at ~170 mm/s, past the settle time
+            t = .03*i
+            self.assertEqual(guard.step(t, pose(250-5*i, 600, 180, t)), (0, 0))
+        self.assertFalse(guard.failed, guard.reason)
+        self.assertEqual(guard.reason, 'wall_wait_until_stopped')
+        self.assertLess(guard.step(.39, pose(190, 600, 180, .39))[0], 0)   # at rest: reverse
+        self.assertEqual(guard.pulses, 1)
+
+    def test_waits_until_the_camera_shows_the_robot_stopped(self):
+        guard = WallGuard(config())
+        guard.step(0, pose(150, 600, 180, 0))
+        for i in range(1, 21):                    # ~100 mm/s: still coasting
+            t = .03*i
+            self.assertEqual(guard.step(t, pose(150-3*i, 600, 180, t)), (0, 0))
+        self.assertEqual((guard.reason, guard.pulses), ('wall_wait_until_stopped', 0))
+        self.assertLess(guard.step(.63, pose(90, 600, 180, .63))[0], 0)
+
+    def test_blocked_retries_after_wall_retry_s(self):
+        guard, command = self.pulse(pose(100, 600, 180), [{'x': 250, 'y': 600, 'color': 2}])
+        self.assertTrue(guard.failed)
+        retry = .4+WALL['wall_retry_s']
+        self.assertEqual(guard.step(retry-.05, pose(100, 600, 180, retry-.05)), (0, 0))
+        self.assertTrue(guard.failed)
+        # The stone was pushed aside: a new attempt reverses.
+        self.assertEqual(guard.step(retry+.01, pose(100, 600, 180, retry+.01)), (0, 0))
+        self.assertFalse(guard.failed)
+        self.assertLess(guard.step(retry+.4, pose(100, 600, 180, retry+.4))[0], 0)
+
+    def test_tangent_near_wall_turns_to_face_it_when_facing_inward_would_hit(self):
+        # Field geometry: body front 135 / back 90 / sides 75, axle 40 mm ahead of the tag.
+        # Parallel 160 mm from the left wall a full-circle check found no escape. Turning to
+        # face inward swings the long back end into the wall; turning to face the wall
+        # (then reversing out) keeps every corner >= 20 mm inside.
+        cfg = config(axle=-40)
+        cfg['robot_tag']['footprint_mm'] = dict(front=135, back=90, left=75, right=75)
+        for heading, sign in ((90, 1), (-90, -1)):
+            guard, (l, r) = self.pulse(pose(160, 600, heading), cfg=cfg)
+            self.assertEqual(guard.reason, 'turn_inward')
+            self.assertEqual(math.copysign(1, l), sign)     # heading moves toward 180
+            self.assertAlmostEqual(guard.until, .4+WALL['wall_turn_pulse_s'])
+        guard, cmd = self.pulse(pose(130, 600, 90), cfg=cfg)
+        self.assertEqual((cmd, guard.reason), ((0, 0), 'wall_no_clear_escape'))
+
     def test_unsafe_configuration_rejected(self):
         for key, value in [('wall_pulse_s', 1), ('wall_recovery_speed', 2),
                            ('wall_pose_max_age_s', 1), ('wall_margin_mm', 600),
@@ -133,8 +187,9 @@ class PlannerRecoveryTests(unittest.TestCase):
     def test_preserves_payload_and_resumes_carry_without_gripper_events(self):
         p = Planner(config())
         p.state, p.carrying, p.pick_checked = 'CARRY', 2, True
-        for t, x in [(0, 100), (.4, 100), (.51, 280), (.9, 280)]:
-            self.assertEqual(p.step(t, pose(x, 600, 180, t), [], [])[2], [])
+        # y=770: reversing from here does not drag the cyan stone into another zone
+        for t, x in [(0, 100), (.4, 100), (.41+P, 280), (.8+P, 280)]:
+            self.assertEqual(p.step(t, pose(x, 770, 180, t), [], [])[2], [])
         self.assertEqual(p.state, 'CARRY')
         self.assertEqual(p.carrying, 2)
 
@@ -143,7 +198,7 @@ class PlannerRecoveryTests(unittest.TestCase):
         p.state = 'BACKOFF'
         p.lock.target = {'x': 300, 'y': 600, 'color': 2, 'confidence': .9}
         p._pulse = {'end': 9, 'settle': 10}
-        for t, x in [(0, 100), (.4, 100), (.51, 280), (.9, 280)]:
+        for t, x in [(0, 100), (.4, 100), (.41+P, 280), (.8+P, 280)]:
             p.step(t, pose(x, 600, 180, t), [], [])
         self.assertEqual(p.state, 'SEARCH')
         self.assertIsNone(p._pulse)
@@ -169,6 +224,17 @@ class PlannerRecoveryTests(unittest.TestCase):
             self.assertEqual(p.state, next_state)
             p.step(.2, pose(100, 600, 180, .2), [], [])
             self.assertEqual(p.state, 'WALL_RECOVERY')
+
+    def test_retry_that_finds_the_robot_safe_resumes_the_mission(self):
+        p = Planner(config())
+        p.state, p.carrying, p.pick_checked = 'CARRY', 2, True
+        p.step(0, pose(100, 600, 180, 0), [], [{'x': 250, 'y': 600, 'color': 0}])
+        p.step(.4, pose(100, 600, 180, .4), [], [{'x': 250, 'y': 600, 'color': 0}])
+        self.assertEqual(p.state, 'WALL_BLOCKED')
+        t = .4+WALL['wall_retry_s']+.1
+        p.step(t, pose(600, 770, 180, t), [], [])            # moved back inside by hand
+        self.assertEqual(p.state, 'CARRY')
+        self.assertEqual(p.carrying, 2)
 
     def test_staging_and_park_stay_inside(self):
         cfg = config()

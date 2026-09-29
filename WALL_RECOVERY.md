@@ -13,18 +13,29 @@ completely, the robot stops. It does not reverse using a remembered position.
 1. A live tag within 200 mm of an edge, a body corner within 20 mm of an edge, or
    predicted motion crossing those limits interrupts the current drive or backoff.
    Recovery also accepts live tag coordinates up to 200 mm outside the rectangle.
-2. The robot stops for at least 350 ms, then chooses forward or reverse motion
-   that increases clearance. A robot facing the wall normally reverses.
-3. It moves for a 100 ms pulse, stops, and measures again. A tangent heading can
-   turn only if the body's whole rotation fits inside the field and avoids
-   observed stones. A physically pinned robot with no clear route stays stopped.
+2. The robot stops for at least 350 ms **and until the camera shows it at rest**
+   (below 80 mm/s). The camera reports motion ~0.2 s late and the wheels coast
+   after a stop, so movement from before the stop is not held against the
+   recovery: "moving outward" is judged only after its own first pulse. It then
+   chooses forward or reverse motion that increases clearance. A robot facing
+   the wall normally reverses.
+3. It moves for a 150 ms drive pulse (or a 200 ms turn pulse at turn power 0.5),
+   stops, waits until at rest, and measures again. A drive pulse needs a clear
+   path of 120 mm, about what one pulse travels on a charged battery. A tangent
+   heading turns toward facing inward, or toward facing the wall to reverse out,
+   whichever keeps every body corner at least 20 mm inside the field over the
+   whole arc one pulse may sweep (the planned turn + 30°, at least 100°), avoids
+   observed stones, and preferably keeps the tag off the edge. A physically
+   pinned robot with no clear route stays stopped.
 4. Once the tag is at least 260 mm inside and the body has at least 80 mm
    clearance, normal autonomy resumes. An interrupted pickup is skipped briefly;
    an already held stone remains assigned to its original color. Recovery sends
    no gripper commands. A grip/release already in progress finishes while stopped.
 5. No progress for 3 seconds, 12 seconds total recovery, motion substantially
-   farther outward, or no clear escape produces `WALL_BLOCKED`. It stays stopped
-   until the program is restarted after the cause has been corrected.
+   farther outward, or no clear escape produces `WALL_BLOCKED`. The robot stays
+   stopped for 3 seconds (`wall_retry_s`), then tries again from what the camera
+   shows: a stone may have been pushed aside, or the robot moved by hand. If it
+   is already safely inside, normal autonomy resumes.
 
 Staging and pickup poses are checked against the boundary before acquiring a
 target, and the park destination is clamped inside it. Recovery also interrupts
@@ -35,6 +46,15 @@ The sender has an independent pulse deadline, so a slow camera-processing frame
 cannot keep refreshing a recovery pulse. Stop packets go out on the next 20 Hz
 sender tick; Python scheduling and Wi-Fi are not real-time guarantees. The existing
 firmware drive watchdog still handles loss of communication.
+
+## Our camera: where recovery can act
+
+On our field the calibrated rectangle fills the camera picture (0 px border left
+and right, roughly 25-100 mm top and bottom), and the tag was lost 100-170 mm from
+an edge in the 2026-09-29 runs. So recovery normally acts between the point where
+the tag disappears and the 200 mm margin; a robot whose tag is already gone
+stays stopped (no blind driving). The keep-out checks on staging, pickup and park
+are what keep the robot out of that band in the first place.
 
 ## Run with the full camera view
 
@@ -73,9 +93,13 @@ Settings live under `calib.json` → `autonomy`, or use `--set KEY=VALUE` for on
 | `wall_body_margin_mm` | 20 | Minimum body-corner distance |
 | `wall_resume_mm` | 60 | Extra clearance before resuming |
 | `wall_recovery_speed` | 0.18 | Forward/reverse drive command |
-| `wall_recovery_turn` | 0.25 | Turn drive command |
-| `wall_pulse_s` | 0.10 | Movement pulse; limited to at most 0.20 s |
+| `wall_recovery_turn` | 0.5 | Turn drive command (= `pulse_power`; at 0.25 a spin often never starts) |
+| `wall_pulse_s` | 0.15 | Drive pulse; limited to at most 0.20 s |
+| `wall_turn_pulse_s` | 0.20 | Turn pulse; limited to at most 0.40 s |
+| `wall_path_mm` | 120 | Path checked for stones and wrong zones before a drive pulse |
 | `wall_settle_s` | 0.35 | Stopped observation period; at least camera delay + 0.10 s |
+| `wall_rest_mm_s` | 80 | The camera must show the robot slower than this before a pulse |
+| `wall_retry_s` | 3 | Stopped time in `WALL_BLOCKED` before a new attempt |
 | `wall_pose_max_age_s` | 0.25 | Maximum age accepted for recovery |
 | `wall_no_progress_s` | 3 | No-motion timeout |
 | `wall_timeout_s` | 12 | Total recovery timeout |
