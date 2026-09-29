@@ -121,13 +121,32 @@ retains the previous pose.
 
 ## Verification and limits
 
-`python -m unittest discover -s tests` passes 158 tests. New checks cover visible
+`python -m unittest discover -s tests` passes 163 tests. New checks cover visible
 tags outside all four calibrated edges, forward/reverse recovery, corners,
 rotation clearance, obstacle and wrong-zone checks, payload retention, freshness
-and firmware gates, pulse deadlines, timeouts, and simulated camera latency.
+and firmware gates, pulse deadlines, timeouts, simulated camera latency, motion
+still arriving after the stop, waiting for rest, the arc turn next to a wall,
+and retry after `WALL_BLOCKED`.
 Mission simulation tests still exercise sorting with the guard enabled. One
 historical zone-routing-only test disables the guard because it deliberately
 starts outside the new wall margin.
+
+Simulator comparison (2026-09-30; charged-battery physics, min_duty 0.65, tag lost
+within 130 mm of an edge; 30 seeds each of practice/competition layout x
+scattered/pile, 180 s):
+
+| | stones correct | wrong | runs frozen in `WALL_BLOCKED` |
+| --- | ---: | ---: | ---: |
+| before the wall guard | 499 | 84 | - |
+| PR #2 as submitted | 461 | 62 | 26 / 120 |
+| with the fixes above | 515 | 72 | 0 (brief blocks retry) |
+| before, with a 0.12 s coast model | 101 | 34 | - |
+| PR #2, coast model | 92 | 31 | 54 / 120 |
+| fixes, coast model | 118 | 35 | 0 |
+
+Robot started 100-195 mm from each wall at 12 headings (coast model): 232 of
+240 back inside (PR as submitted: 206), median 2.0 s. The 8 others are parallel
+to the wall at 130 mm; any turn there would bring a corner within 9 mm of it.
 
 These checks validate software decisions, not real-world release friction,
 traction, camera calibration outside its rectangle, or physical clearance.

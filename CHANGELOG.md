@@ -1,5 +1,23 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-09-30: wall keep-out and wall recovery (PR #2 + fixes)
+
+**EN**
+- Merged PR #2 (Mickmocca): the planner keeps the robot away from the walls. A stone is chosen only if the robot's tag stays at least 200 mm and its body at least 20 mm from every wall, both at the staging point and at the pickup point. The park point is kept inside the same margin. `pose_timeout_s` 0.5 → 0.25 s. A missed tag frame now stops the wheels at once; the previous pose only keeps masking the robot in the image.
+- New wall recovery (`wall_guard.py`, states `WALL_RECOVERY` and `WALL_BLOCKED`): when the tag comes within 200 mm of a wall (or a body corner within 20 mm, or the predicted pose would), the robot stops, waits until the camera shows it at rest, and moves back inside in short pulses, measuring after each one. It moves only with a fresh tag pose (no blind driving). Settings are the `wall_*` keys in `calib.json` → `autonomy`; see [WALL_RECOVERY.md](WALL_RECOVERY.md).
+- Fixes on top of the PR: motion from before the stop (camera delay and coasting) no longer counts as "moving outward", which froze the robot for the rest of the run; pulses are long enough to move the robot (drive 0.15 s, turn 0.2 s at power 0.5); a turn next to a wall checks only the arc it may sweep, so a robot parallel to a wall can turn to face it and reverse out; `WALL_BLOCKED` tries again after 3 s instead of stopping for the whole run.
+- `autonomy.py --show-full-frame` also shows the uncropped camera picture with the calibrated field outline.
+- Simulator, 120 runs of 180 s (charged battery, min_duty 0.65, practice and competition layouts): 515 stones in the right zone vs 499 before, 72 wrong vs 84; no scenario significantly worse. With a coast model: 118 vs 101. The PR as submitted placed 461 and froze in 26 of 120 runs (54 of 120 with coasting). The simulator lets the robot slide along walls, so how recovery frees a robot on a real wall still needs a field check.
+- Tests: 163 pass.
+
+**TH**
+- รวม PR #2 (Mickmocca): planner กันหุ่นไม่ให้เข้าใกล้ขอบสนาม จะเลือกหินก็ต่อเมื่อแท็กห่างขอบทุกด้านอย่างน้อย 200 mm และตัวหุ่นห่างอย่างน้อย 20 mm ทั้งที่จุดเตรียมและจุดคีบ จุดจอด (park) อยู่ในระยะเดียวกัน `pose_timeout_s` 0.5 → 0.25 s ถ้าเฟรมไหนไม่เห็นแท็ก ล้อหยุดทันที (pose เก่าใช้แค่บังตัวหุ่นในภาพ)
+- ระบบพาหุ่นกลับจากขอบ (`wall_guard.py`, สถานะ `WALL_RECOVERY` และ `WALL_BLOCKED`): เมื่อแท็กเข้าใกล้ขอบภายใน 200 mm (หรือมุมตัวหุ่นภายใน 20 mm หรือ pose ที่คาดการณ์จะเข้าใกล้) หุ่นจะหยุด รอจนกล้องเห็นว่าหยุดนิ่ง แล้วขยับกลับเข้าสนามเป็นช่วงสั้น ๆ และวัดใหม่ทุกครั้ง ขยับเฉพาะเมื่อเห็นแท็กสด ๆ เท่านั้น (ไม่ขับแบบตาบอด) ค่าตั้งคือคีย์ `wall_*` ใน `calib.json` → `autonomy` อ่าน [WALL_RECOVERY.md](WALL_RECOVERY.md)
+- แก้เพิ่มจาก PR: การเคลื่อนที่ที่เกิดก่อนหยุด (กล้องหน่วงและล้อไหลต่อ) ไม่ถูกนับว่า "ออกไปทางขอบ" อีกแล้ว (เดิมทำให้หุ่นค้างทั้งรอบ); ช่วงขยับยาวพอให้หุ่นขยับจริง (เดิน 0.15 s, หมุน 0.2 s ที่กำลัง 0.5); การหมุนข้างขอบตรวจเฉพาะส่วนโค้งที่หมุนจริง หุ่นที่ขนานกับขอบจึงหันหน้าเข้าขอบแล้วถอยออกได้; `WALL_BLOCKED` ลองใหม่หลัง 3 วินาที แทนการหยุดทั้งรอบ
+- `autonomy.py --show-full-frame` แสดงภาพกล้องเต็มพร้อมกรอบสนามที่ calibrate
+- ตัวจำลอง 120 รอบ รอบละ 180 s (แบตเต็ม, min_duty 0.65, สนามซ้อมและสนามแข่ง): วางถูกโซน 515 ก้อน เทียบ 499 ก่อนแก้ ผิด 72 เทียบ 84 ไม่มีกรณีไหนแย่ลงอย่างมีนัยสำคัญ เมื่อจำลองล้อไหลต่อหลังหยุด: 118 เทียบ 101 PR ตามที่ส่งมาวางได้ 461 และค้าง 26 จาก 120 รอบ (54 จาก 120 เมื่อมีล้อไหล) ตัวจำลองให้หุ่นไถลไปตามขอบได้ จึงยังต้องทดสอบในสนามจริงว่าหุ่นที่ติดขอบหลุดออกมาได้
+- เทสต์: ผ่าน 163
+
 ## 2026-09-28: autonomy stage movement fix
 
 **EN**
