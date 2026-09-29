@@ -55,11 +55,11 @@ class Safety(unittest.TestCase):
     def test_missed_grab_inside_other_zone_does_not_open_there(self):
         p = self.carrying_planner()
         still_there = [{'color': 2, 'x': 1000.0, 'y': 600.0}]
-        inside_orange = pose(1470 - 120, 1050, 0)                # grip point at orange zone centre
+        inside_orange = pose(1470, 1050 - 120, 90)              # grip at orange; body inside wall margin
         opened_in_zone = False
         for i in range(20):
             t = i * 0.1
-            _, _, ev = p.step(t, pose(inside_orange.x, inside_orange.y, 0, t), [], still_there)
+            _, _, ev = p.step(t, pose(inside_orange.x, inside_orange.y, 90, t), [], still_there)
             opened_in_zone |= ('grip', {'p': 'open'}) in ev
         self.assertEqual(p.state, 'DISCARD')
         self.assertFalse(opened_in_zone)
@@ -73,7 +73,7 @@ class Safety(unittest.TestCase):
         _, _, ev = p.step(5.0, pose(1000, 800, 0, 5.0), [], [], {'state': 'RUNNING', 'servo': [120]})
         self.assertNotIn(('grip', {'p': 'open'}), ev)
         self.assertEqual(p.state, 'CARRY')
-        _, _, ev = p.step(5.1, pose(1470 - 120, 1050, 0, 5.1), [], [], {'state': 'RUNNING', 'servo': [120]})
+        _, _, ev = p.step(5.1, pose(1470, 1050 - 120, 90, 5.1), [], [], {'state': 'RUNNING', 'servo': [120]})
         self.assertIn(('grip', {'p': 'open'}), ev)
         self.assertEqual(p.state, 'RELEASE')
 
@@ -127,6 +127,9 @@ class CarryRoute(unittest.TestCase):
     def test_carry_goes_around_a_zone_on_the_straight_line(self):
         import sim
         cfg = config()
+        # Isolate zone routing from wall recovery: this historical route begins
+        # outside the new margin. Edge recovery itself is covered in test_wall_guard.
+        cfg['autonomy'] = {'wall_recovery_enabled': False}
         robot = sim.SimRobot(cfg, [], 80, 800, 0)            # grip point (200, 800)
         robot.command('start', 0.0)
         p = Planner(cfg)

@@ -58,7 +58,9 @@ class PerceptionTests(unittest.TestCase):
         p.step(frame, 0.0)
         hidden = frame.copy()
         hidden[125:175, 175:225] = 40                                    # tag not visible this frame
-        self.assertIsNotNone(p.step(hidden, 0.2).robot_polygon)          # within hold_s
+        snap = p.step(hidden, 0.2)
+        self.assertIsNotNone(snap.robot_polygon)                       # within hold_s
+        self.assertIsNone(snap.pose)                                   # held mask must never drive wheels
         self.assertIsNone(p.step(hidden, 0.9).robot_polygon)             # too old: no mask
 
 

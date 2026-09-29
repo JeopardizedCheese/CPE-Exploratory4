@@ -41,8 +41,10 @@ from pathlib import Path
 
 from robot_pose import Pose
 from target_lock import TargetLock
+from wall_guard import WallGuard, DEFAULTS as WALL_DEFAULTS
 
 DEFAULTS = {
+    **WALL_DEFAULTS,
     'cruise': 0.45, 'creep': 0.18, 'turn': 0.35, 'min_turn': 0.16,
     'kp_turn': 1.0,                 # drive-command per radian of heading error (fixed-power turns)
     'max_forward_steer_ratio': 0.5, # below 1: neither wheel reverses in the forward branch; with
@@ -56,7 +58,7 @@ DEFAULTS = {
     # is now: the last pose moved on by the recent velocity for this long. At rest nothing
     # changes; at 500 mm/s it is 100 mm. false = plan from the raw (old) pose.
     'camera_delay_s': 0.2, 'predict_pose': True,
-    'pose_timeout_s': 0.5, 'servo_tol_deg': 3, 'servo_timeout_s': 2.0,
+    'pose_timeout_s': 0.25, 'servo_tol_deg': 3, 'servo_timeout_s': 2.0,
     'timeouts_s': {'GOTO_STAGE': 15, 'ALIGN': 6, 'APPROACH': 8, 'SEARCH_IDLE': 2.5, 'PARK': 10},
     'skip_s': 25, 'skip_mm': 40, 'pick_check_mm': 180, 'pile_avoid_mm': 170,
     'grip_open': 0, 'grip_close': 40, 'grip_servo': 0,   # = GRIP_OPEN/CLOSE_DEG in config.h
@@ -127,7 +129,9 @@ class Planner:
         self.zones = {int(str(k).split('_')[0]): (z['center_mm'][0], z['center_mm'][1], z['radius_mm'])
                       for k, z in cfg.get('zones', {}).items()}
         w, h = cfg['arena']['size_mm']
-        self.park = self.o['park_mm'] or [w * 0.85, h * 0.5]
+        self.wall = WallGuard(cfg, self.o)
+        self.park = self.wall.clamp_tag_goal(*(self.o['park_mm'] or [w * 0.85, h * 0.5]))
+        self._wall_resume_state = None
         self.lock = TargetLock(max_missing_s=1.0, match_mm=35)
         self.state, self.since = 'SEARCH', 0.0
         self.skip = []                      # (x, y, until)
@@ -283,7 +287,22 @@ class Planner:
             c = math.hypot(sx - ax, sy - ay) + math.hypot(zx - t['x'], zy - t['y'])
             c += 600 * self._crosses_pile(ax, ay, sx, sy)
             return c - 100 * t.get('confidence', 0)
-        return lambda targets: min(targets, key=cost) if targets else None
+        def choose(targets):
+            safe = [t for t in targets if self._approach_inside(t, self._approach_heading(t, pose))]
+            return min(safe, key=cost) if safe else None
+        return choose
+
+    def _approach_inside(self, target, heading):
+        """Check the tag AND body at staging and pickup, not just the stone."""
+        c, s = math.cos(heading), math.sin(heading)
+        for extra in (self.o['stage_mm'], 0):
+            ax, ay = self._centre_for(target, heading, extra)
+            x, y = ax+self.axle*c, ay+self.axle*s
+            p = Pose(x, y, math.degrees(heading), target['x']-extra*c,
+                     target['y']-extra*s, 0, 0)
+            if not self.wall.safe_pose(p):
+                return False
+        return True
 
     def _arrived(self, pose, px, py, gx, gy, tol):
         """Close enough, or so close that the goal swings behind us (turning would oscillate)."""
@@ -388,9 +407,11 @@ class Planner:
                       'pose_age_s': None if pose is None else now-pose.t,
                       'firmware_state': status.get('state') if status else None}
         if perception_status != 'ok':
+            self.wall.pause(now, 'wall_wait_valid_vision')
             result = (0.0, 0.0, [])
             self.debug['reason'] = 'vision_' + perception_status
         elif require_status and not status:
+            self.wall.pause(now, 'wall_wait_firmware')
             result = (0.0, 0.0, [])
             self.debug['reason'] = 'no_fresh_firmware_status'
         else:
@@ -407,7 +428,36 @@ class Planner:
         self.debug.update(state=self.state, l=l, r=r, lock_reason=self.lock.reason,
                           target=dict(self.lock.target) if self.lock.target else None,
                           stalled=self._stalled(now, pose, l, r))
+        self.debug.update(self.wall.diagnostics(pose))
         return result
+
+    def _recover_wall(self, now, pose, observations):
+        forecast = self._predict(pose) if self.o['predict_pose'] and not self.wall.active else None
+        carrying = -1 if self.state == 'DISCARD' or self._wall_resume_state == 'DISCARD' else self.carrying
+        command = self.wall.step(now, pose, observations, carrying, forecast)
+        if command is None:
+            return None
+        if self.state not in ('WALL_RECOVERY', 'WALL_BLOCKED'):
+            self._wall_resume_state = self.state
+            self._pulse, self._was_spinning = None, False
+            self.motion.clear()
+            self.backoff_from = None
+        self.debug['reason'] = self.wall.reason
+        if self.wall.completed:
+            resume = self._wall_resume_state
+            self._wall_resume_state = None
+            self.motion.clear()
+            if resume == 'CARRY' and self.carrying is not None:
+                self._go('CARRY', now, 'wall recovered; keep payload')
+            elif resume == 'DISCARD':
+                self.discard_to = self._safe_drop(pose)
+                self._go('DISCARD', now, 'wall recovered')
+            else:
+                self._skip_target(now, 'wall recovery')
+                self._go('SEARCH', now, 'wall recovered; choose a new approach')
+        else:
+            self._go('WALL_BLOCKED' if self.wall.failed else 'WALL_RECOVERY', now, self.wall.reason)
+        return *command, []
 
     def _predict(self, pose):
         """pose moved on by camera_delay_s at the velocity of the last ~0.15 s of poses."""
@@ -463,11 +513,22 @@ class Planner:
         """Returns (l, r, events). events: [(cmd, fields)] one-off commands to send."""
         ev = []
         if status and status.get('state') not in (None, 'RUNNING'):
+            self.wall.pause(now, 'wall_wait_firmware')
             self.debug['reason'] = 'firmware_' + str(status.get('state'))
             return 0.0, 0.0, ev
-        if pose is None or now - pose.t > self.o['pose_timeout_s']:
+        if pose is None or not 0 <= now - pose.t <= min(self.o['pose_timeout_s'], self.wall.o['wall_pose_max_age_s']):
+            self.wall.pause(now, 'wall_wait_fresh_tag')
             self.debug['reason'] = 'tag_missing' if pose is None else 'pose_stale'
             return 0.0, 0.0, ev                          # no fresh pose: stand still
+        if not all(math.isfinite(v) for v in (pose.x, pose.y, pose.heading_deg, pose.grip_x, pose.grip_y)):
+            self.wall.pause(now, 'wall_invalid_pose')
+            self.debug['reason'] = 'pose_invalid'
+            return 0.0, 0.0, ev
+        # GRIP/RELEASE are stationary: finish the servo operation before moving a payload.
+        if self.state not in ('GRIP', 'RELEASE'):
+            recovery = self._recover_wall(now, pose, observations)
+            if recovery is not None:
+                return recovery
         if observations:
             xs = [o['x'] for o in observations]
             ys = [o['y'] for o in observations]
@@ -493,7 +554,7 @@ class Planner:
             return 0.0, 0.0, ev
 
         if s == 'PARK':
-            if usable or self._elapsed(now) > o['timeouts_s']['PARK']:
+            if self._choose(pose)(usable) or self._elapsed(now) > o['timeouts_s']['PARK']:
                 self._go('SEARCH', now)
                 return 0.0, 0.0, ev
             if math.hypot(self.park[0] - pose.x, self.park[1] - pose.y) < 60:
@@ -514,6 +575,10 @@ class Planner:
             self.debug['target_under_robot'] = covered
             if t is None:
                 self._go('SEARCH', now, f'target {self.lock.reason}')
+                return 0.0, 0.0, ev
+            if not self._approach_inside(t, self.heading):
+                self._skip_target(now, 'approach crosses wall margin')
+                self._go('SEARCH', now, 'approach crosses wall margin')
                 return 0.0, 0.0, ev
             sx, sy = self._centre_for(t, self.heading, o['stage_mm'])   # heading frozen at lock
             ux, uy = math.cos(self.heading), math.sin(self.heading)
@@ -700,7 +765,9 @@ def drive_floor(o):
 def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=False, rate=30.0):
     import sim
     w, h = cfg['arena']['size_mm']
-    x, y, hd = start or (w * 0.92, h * 0.5, 180.0)
+    # Start ordinary mission demos in the navigable interior. Explicit edge starts
+    # still exercise wall recovery (the previous 0.92*w start was in the wall margin).
+    x, y, hd = start or (w * 0.85, h * 0.5, 180.0)
     robot = sim.SimRobot(cfg, stones, x, y, hd, params=params, seed=seed)
     planner = Planner(cfg)
     if 'camera_delay_s' not in cfg.get('autonomy', {}):
@@ -785,14 +852,16 @@ class DriveSender:
         self.floor = floor or {}            # drive_floor(): the min_duty field, if any
         self.l = self.r = 0.0
         self.t = 0.0
+        self.valid_until = None
         self.ok = True
         self.lock = threading.Lock()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
-    def set(self, l, r):
+    def set(self, l, r, valid_until=None):
         with self.lock:
             self.l, self.r, self.t = l, r, time.monotonic()
+            self.valid_until = valid_until
 
     def event(self, cmd, **fields):
         # The heartbeat and one-shot commands share a sequence counter. Serialize
@@ -803,7 +872,8 @@ class DriveSender:
     def _run(self):
         while self.ok:
             with self.lock:
-                fresh = time.monotonic() - self.t <= self.stale_s
+                now = time.monotonic()
+                fresh = now - self.t <= self.stale_s and (self.valid_until is None or now < self.valid_until)
                 l, r = (self.l, self.r) if fresh else (0.0, 0.0)
                 self.link.send('drive', l=round(l, 3), r=round(r, 3), **self.floor)
             time.sleep(1.0 / self.rate)
@@ -920,7 +990,7 @@ def run_real(args, cfg):
                 l, r, events = planner.step(decision_t, snap.pose, snap.targets, snap.observations, status,
                                             perception_status=snap.status, require_status=not dry_run)
                 if sender:
-                    sender.set(l, r)
+                    sender.set(l, r, valid_until=planner.debug.get('wall_command_until'))
                     for cmd, fields in events:
                         sender.event(cmd, **fields)
                 info = dict(planner.debug, t=decision_t, dry_run=dry_run, events=events,
@@ -956,6 +1026,16 @@ def run_real(args, cfg):
                     for i, line in enumerate(lines):
                         cv2.putText(canvas, line, (10, h+22+i*25), 0, .45, (240, 240, 240), 1)
                     cv2.imshow('autonomy', canvas)
+                    if getattr(args, 'show_full_frame', False):
+                        raw_view = raw.copy()
+                        corners = np.array(cfg['arena']['corners_px'], np.int32)
+                        cv2.polylines(raw_view, [corners], True, (0, 200, 255), 2)
+                        tag_corners = perception.pose_est.last_corners_px if perception.pose_est else None
+                        if snap.pose is not None and tag_corners is not None:
+                            cv2.polylines(raw_view, [np.round(tag_corners).astype(np.int32)], True, (255, 0, 255), 2)
+                        cv2.putText(raw_view, info['state'] + ' | ' + str(info.get('wall_reason', '')),
+                                    (10, 24), 0, .55, (255, 0, 255), 2)
+                        cv2.imshow('full camera (yellow = calibrated field)', raw_view)
                     if (cv2.waitKey(1) & 255) in (ord('q'), 27, ord('x')):
                         break
                 if status and status.get('state') == 'IDLE' and status.get('why') == 'remote stop':
@@ -986,6 +1066,7 @@ def main():
     p.add_argument('--camera', type=int)
     p.add_argument('--config', type=Path, default=Path(__file__).with_name('calib.json'))
     p.add_argument('--headless', action='store_true')
+    p.add_argument('--show-full-frame', action='store_true', help='also show the uncropped camera and calibrated boundary')
     p.add_argument('--dry-run', action='store_true', help='Live camera/planner preview, no UDP or robot commands')
     p.add_argument('--check-config', action='store_true', help='Check calibration files without camera or robot')
     p.add_argument('--record', action='store_true',
