@@ -269,13 +269,13 @@ class TurnPulses(unittest.TestCase):
 
 
 class FieldPhysics(unittest.TestCase):
-    def drive(self, l, r, secs, params, seed=0):
+    def drive(self, l, r, secs, params, seed=0, **floor):
         import sim
         rb = sim.SimRobot(config(), [], 1000, 600, 0, params=dict(params, ramp_per_s=100), seed=seed)
         rb.command('start', 0)
         t = 0.0
         while t < secs:
-            rb.command('drive', t, l=l, r=r)
+            rb.command('drive', t, l=l, r=r, **floor)
             t += .02
             rb.update(t)
         return rb
@@ -283,6 +283,16 @@ class FieldPhysics(unittest.TestCase):
     def test_default_physics_unchanged(self):
         rb = self.drive(.5, .5, 1.0, {})
         self.assertAlmostEqual(rb.x - 1000, 150, delta=1)
+
+    def test_drive_packet_floor_replaces_min_duty(self):
+        rb = self.drive(.5, .5, 1.0, {}, m=.5)                     # duty .5 + .5 * .5 = .75
+        self.assertAlmostEqual(rb.x - 1000, 225, delta=2)
+        self.assertEqual(rb.status(1.0)['min_duty'], .5)
+        rb = self.drive(.5, .5, 1.0, {}, m=None)                   # no floor sent: MIN_DUTY
+        self.assertAlmostEqual(rb.x - 1000, 150, delta=1)
+        for bad in (1.5, -.1, 'x'):                                # like the firmware: refused
+            rb = self.drive(.5, .5, 1.0, {}, m=bad)
+            self.assertEqual((rb.x, rb.out), (1000, [0.0, 0.0]))
 
     def test_field_min_duty_speed(self):
         import sim

@@ -7,7 +7,11 @@ A teammate may pick this up on another machine; they get the code via `git pull`
 
 - Robot: overhead-camera + AprilTag autonomous stone sorter (`autonomy.py` planner, `perception.py`, ESP32 firmware `firmware/robot_ctrl/`). Gripper servo is **broken**; a new gripper is coming. Until then only driving/turning can be judged — grab outcomes are meaningless.
 - Latest work (commit `3de65de`, see its message for detail): pulse turning (`turn_mode: 'pulse'`, `PULSE_TABLE` in `autonomy.py`), pose prediction over `camera_delay_s` 0.2 s, BACKOFF by distance (`backoff_mm`), crash-safe recording (`--record` → MJPG `video.avi`), simulator refit (`sim.FIELD_PARAMS` = charged battery, `sim.LOW_BATTERY_PARAMS` = earlier fit), `sim_bench.py`.
-- All of it is **simulation-validated only**. Tests: `.venv/bin/python -m unittest discover -s tests` (110 pass). Gesture subproject tests need `CHROMA-Gesture-Control/.venv-gesture` (sklearn).
+- All of it is **simulation-validated only**. Tests: `.venv/bin/python -m unittest discover -s tests` (134 pass). Gesture subproject tests need `CHROMA-Gesture-Control/.venv-gesture` (sklearn).
+- New gripper is fitted (2026-09-29): front of body 135 mm from the tag centre, grip offset measured [140, 0].
+- Codex PR (`5b98762`): `motion_control.py` + firmware `duty` packets (real PWM, no floor; bench-verified ramp after the fix to `rampDuty`). Autonomy does NOT use `duty`: its 0.6/s ramp from zero is too slow for turn pulses.
+- Drive floor per run: `autonomy.py --set min_duty=X` sends `m` with every `drive` packet; firmware uses it in place of `MIN_DUTY` (legacy ramp unchanged) and reports `min_duty` in status. Autonomy stops at once if the firmware doesn't report it. Default (unset) = firmware `MIN_DUTY` 0.71, identical to before. `--set` works for any autonomy option (typos rejected).
+- The old stall measurement behind `MIN_DUTY 0.71` is **not trusted** (partly measured on USB power, per the user).
 - Commit history for the whole arc: `git log --oneline 2f23e6e..92d8e1d`.
 
 ## Key findings (evidence behind the current design)
@@ -21,10 +25,10 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 ## Open work, in the user's priority order
 
 1. **Analyse the next recorded field run** (user/teammate will supply `runs/autonomy/<time>/` with `trace.jsonl` + `video.avi`): check pulse behaviour via trace keys `turn_phase`, `turn_pulse_s`, `turn_planned_deg`, `turn_moved_deg`, `pulse_gain`, `stalled`, `predict_mm`, `backoff_mm`. Compare real pulse rotation with `PULSE_TABLE`.
-2. **MIN_DUTY re-measurement** (hardware/firmware, user's side): stall PWM on a charged battery; if < 181, lower `MIN_DUTY` in `firmware/robot_ctrl/config.h`. Offered but not built: a sweep script (fixed drive/spin commands, speed from camera). Would also need `sim.FIELD_PARAMS` refit afterwards.
+2. **Drive floor from the duty sweep**: `motion_control.py --test-duty` (forward/left/right, `runs/motion/`) gives the lowest duty that reliably moves and turns the robot on a charged battery. Use it as `--set min_duty=X` for autonomy (no reflash); once settled, put it in `calib.json` or `MIN_DUTY`. `PULSE_TABLE` and `sim.FIELD_PARAMS` (stall_duty 0.65 assumed) are fitted at 0.71 and need a refit from the new runs.
 3. **Wall keep-out** (agreed design, not built): vision `_find_approach` in `vision.py` should also require the robot's staging point (tag) ≥ ~200 mm from every wall (corners follow automatically); planner clamps its own goals (park, safe drop, carry waypoints) and BACKOFF to the same margin; `pose_timeout_s` 0.5 → 0.25. Zones near walls (skyblue ~139 mm from bottom) must stay reachable. User confirmed 200 mm is acceptable-ish but asked to verify on the competition layout first — add that layout (zone centres estimated from `actual_start_zone.jpg`, table in chat: lime (169,419), violet (192,831), cyan (690,236), crimson (1245,188), skyblue (627,1061), orange (1209,1033), pile ≈ (850,640), start zone x ≥ ~1706) to the simulator.
 4. **CARRY no-progress watchdog** (agreed, not built): if distance to zone hasn't shrunk ~50 mm in ~5 s → existing DISCARD (never opens inside a wrong zone).
-5. After the new gripper: `calibrate_grip.py 1 --write` and `--axle --write`, `robot_tag.footprint_mm`, `GRIP_*` in `config.h` = `grip_open/close` in `calib.json`, then discuss `approach_max_side_mm` (currently 11).
+5. New gripper follow-up: `GRIP_*` in `config.h` must equal `grip_open/close` in `calib.json` (they differ: close 40 vs 90), confirm `robot_tag.height_mm`, then discuss `approach_max_side_mm` (currently 11).
 6. Minor: `teleop.py` still records mp4 (same unfinalized-file risk).
 
 ## User preferences / decisions (must respect)
@@ -42,6 +46,8 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 .venv/bin/python sim_bench.py [--physics charged|low-battery|ideal] [--set key=value]
 .venv/bin/python autonomy.py --sim --field-physics [charged|low-battery] --show
 .venv/bin/python autonomy.py <ESP_IP> --camera 1 --record      # real run
+.venv/bin/python autonomy.py <ESP_IP> --camera 1 --record --set min_duty=0.5   # real run, lower floor
+.venv/bin/python motion_control.py <ESP_IP> --camera 1 --test-duty 0.4 --test-motion left --max-duty 0.8
 ```
 Recovering an unfinalized mp4v file: take the 54-byte MPEG-4 VOL header from a same-settings reference mp4 (`ffmpeg -c copy -bsf:v dump_extra -f m4v`), prepend to bytes after `mdat`, decode with `ffmpeg -f m4v`.
 

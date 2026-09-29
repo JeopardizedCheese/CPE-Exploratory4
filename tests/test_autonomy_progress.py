@@ -166,5 +166,88 @@ class RealRunnerTests(unittest.TestCase):
             self.assertEqual(row['target_list'], snap.targets)
 
 
+class DriveFloorTests(unittest.TestCase):
+    """autonomy min_duty: the floor duty sent with every drive packet."""
+
+    def run_real_with_status(self, firmware_status, min_duty=.5):
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d)
+            cfg = config()
+            cfg['hsv'] = configuration()['hsv']
+            cfg['arena']['corners_px'] = [[0, 0], [23, 0], [23, 23], [0, 23]]
+            cfg['autonomy'] = {'min_duty': min_duty}
+            config_path = folder / 'calib.json'
+            config_path.write_text(json.dumps(cfg))
+            raw = np.full((24, 24, 3), 180, np.uint8)
+            cv2.imwrite(str(folder / 'background.png'), raw)
+            args = SimpleNamespace(config=config_path, camera=1, esp_ip='127.0.0.1', port=4211,
+                                   headless=True, dry_run=False, log_dir=folder / 'logs')
+            snap = SimpleNamespace(frame=raw, pose=pose(600, 600, 0, time.monotonic()), status='ok',
+                                   targets=[], observations=[])
+            out = io.StringIO()
+            with patch('cv2.VideoCapture'), patch('cv2.destroyAllWindows'), \
+                    patch('detect_live.LatestFrame') as reader, patch('perception.Perception') as perception, \
+                    patch('teleop.Link') as link, patch('autonomy.DriveSender') as sender, redirect_stdout(out):
+                reader.return_value.read.side_effect = [(True, raw), (False, None)]
+                perception.return_value.step.return_value = snap
+                perception.return_value.pose_est.last_reason = 'ok'
+                link.return_value.status = firmware_status
+                link.return_value.status_age.return_value = 0.0
+                autonomy.run_real(args, cfg)
+            rows = (next((folder / 'logs').glob('*/trace.jsonl'))).read_text().splitlines()
+            return rows, sender.call_args, out.getvalue()
+
+    def test_floor_is_sent_and_logged_with_supporting_firmware(self):
+        rows, sender_call, printed = self.run_real_with_status({'state': 'RUNNING', 'servo': [0], 'min_duty': .5})
+        self.assertEqual(sender_call.kwargs['floor'], {'m': .5})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(json.loads(rows[0])['firmware']['min_duty'], .5)
+        self.assertIn('min_duty 0.5', printed)
+
+    def test_old_firmware_without_min_duty_stops_before_planning(self):
+        rows, _, printed = self.run_real_with_status({'state': 'RUNNING', 'servo': [0]})
+        self.assertEqual(rows, [])
+        self.assertIn('does not report min_duty', printed)
+
+    def test_no_floor_keeps_old_packets_and_old_firmware(self):
+        rows, sender_call, _ = self.run_real_with_status({'state': 'RUNNING', 'servo': [0]}, min_duty=None)
+        self.assertEqual(sender_call.kwargs['floor'], {})
+        self.assertEqual(len(rows), 1)
+
+    def test_drive_sender_adds_floor_to_every_drive_packet(self):
+        for floor in ({'m': .45}, {}):
+            sent = []
+            link = SimpleNamespace(send=lambda cmd, **f: sent.append((cmd, f)))
+            sender = autonomy.DriveSender(link, rate=200, floor=floor)
+            sender.set(.2, -.2)
+            time.sleep(.05)
+            sender.stop()
+            drives = [f for cmd, f in sent if cmd == 'drive']
+            self.assertTrue(drives)
+            self.assertTrue(all({k: f[k] for k in f if k == 'm'} == floor for f in drives))
+
+    def test_simulated_run_uses_the_floor(self):
+        cfg = config()
+        cfg['autonomy'] = {'min_duty': .6}
+        result = autonomy.run_sim(cfg, [sim.Stone(1100, 600, 2)], seconds=2, start=(600, 600, 0))
+        self.assertEqual(result['robot'].floor, .6)
+
+    def test_set_overrides_and_min_duty_check(self):
+        cfg = {'autonomy': {'cruise': .3}}
+        autonomy.apply_overrides(cfg, ['min_duty=0.5', 'turn_mode=fixed', 'timeouts_s={"ALIGN": 8}',
+                                       'park_mm=null'])
+        self.assertEqual(cfg['autonomy'], {'cruise': .3, 'min_duty': .5, 'turn_mode': 'fixed',
+                                           'timeouts_s': {'ALIGN': 8}, 'park_mm': None})
+        self.assertEqual(Planner(dict(config(), autonomy=cfg['autonomy'])).o['timeouts_s']['ALIGN'], 8)
+        with self.assertRaises(ValueError):
+            autonomy.apply_overrides(cfg, ['min_dutty=0.5'])          # typo: never silently ignored
+        with self.assertRaises(ValueError):
+            autonomy.apply_overrides(cfg, ['min_duty'])
+        self.assertIsNone(autonomy.min_duty_problem(cfg))
+        for bad in (1.5, -.1, 'high', True):
+            self.assertIsNotNone(autonomy.min_duty_problem({'autonomy': {'min_duty': bad}}))
+        self.assertIsNone(autonomy.min_duty_problem({'autonomy': {'min_duty': None}}))
+
+
 if __name__ == '__main__':
     unittest.main()

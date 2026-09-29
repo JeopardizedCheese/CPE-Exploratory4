@@ -5,6 +5,7 @@
     python autonomy.py 10.178.188.50 --camera 1     # real robot (sends 'start'; q/x/ESC stops)
     python autonomy.py --dry-run --camera 1       # camera/planner only, no robot commands
     python autonomy.py 10.178.188.50 --camera 1 --record   # also save video.avi for replay
+    python autonomy.py 10.178.188.50 --camera 1 --record --set min_duty=0.5   # lower drive floor
 
 The planner is deliberately simple:
 
@@ -78,6 +79,12 @@ DEFAULTS = {
     'backout_inside_reach': True,    # CARRY goal inside the grip point's turning circle: creep
                                      # straight back a few cm instead of turning on the spot forever
     'kp_drive': 0.5,                 # steering per radian while driving forward
+    # Floor duty of the firmware's drive mapping: any non-zero command starts at this duty and
+    # scales linearly to full power. None = the firmware's own MIN_DUTY (0.71). A number is
+    # sent with every drive packet (firmware that reports min_duty), so it can be changed per
+    # run: --set min_duty=0.5. PULSE_TABLE was measured at 0.71: with a lower floor the first
+    # pulses turn less, until pulse_gain has learned the new robot.
+    'min_duty': None,
 }
 
 
@@ -661,6 +668,34 @@ def grip_calibration_warning(cfg):
     return ('WARNING, not measured yet:\n  ' + '\n  '.join(missing)) if missing else None
 
 
+def apply_overrides(cfg, items):
+    """--set KEY=VALUE: replace calib.json "autonomy" values for this run. Values are JSON
+    (0.5, true, null, {"ALIGN": 8}); anything else stays a string (turn_mode=fixed)."""
+    for item in items:
+        key, sep, value = item.partition('=')
+        if not sep or key not in DEFAULTS:
+            raise ValueError(f'--set {item}: expected KEY=VALUE with KEY one of the autonomy options '
+                             f'({", ".join(sorted(DEFAULTS))})')
+        try:
+            value = json.loads(value)
+        except ValueError:
+            pass
+        cfg.setdefault('autonomy', {})[key] = value
+
+
+def min_duty_problem(cfg):
+    floor = cfg.get('autonomy', {}).get('min_duty')
+    if floor is not None and (isinstance(floor, bool) or not isinstance(floor, (int, float))
+                              or not 0 <= floor <= 1):
+        return f'autonomy.min_duty must be a number from 0 to 1, or null (got {floor!r})'
+    return None
+
+
+def drive_floor(o):
+    """Extra drive-packet fields for the min_duty option: {} = firmware MIN_DUTY."""
+    return {} if o.get('min_duty') is None else {'m': round(float(o['min_duty']), 3)}
+
+
 # ------------------------------------------------------------ simulation runner
 def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=False, rate=30.0):
     import sim
@@ -671,6 +706,7 @@ def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=Fa
     if 'camera_delay_s' not in cfg.get('autonomy', {}):
         # predict over the simulated robot's own delay, as camera_delay_s is measured on the real one
         planner.o['camera_delay_s'] = robot.p['latency_s'] + 0.5 / rate
+    floor = drive_floor(planner.o)
     dt, t, next_frame = 0.02, 0.0, 0.0
     pose, targets, obs = None, [], []
     l = r = 0.0
@@ -685,7 +721,7 @@ def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=Fa
                 robot.command(cmd, t, **fields)
             if show and not _show(robot, planner, targets, t):
                 break
-        robot.command('drive', t, l=l, r=r)                  # 50 Hz, like the sender thread
+        robot.command('drive', t, l=l, r=r, **floor)         # 50 Hz, like the sender thread
         t += dt
     return {**robot.score(), 'released_by_planner': planner.released, 'time_s': round(t, 1),
             'log': planner.events_log, 'robot': robot}
@@ -744,8 +780,9 @@ def scenario(cfg, name, seed=0):
 class DriveSender:
     """Sends the latest (l, r) 20x per second; zeros if the planner goes quiet."""
 
-    def __init__(self, link, rate=20.0, stale_s=0.25):
+    def __init__(self, link, rate=20.0, stale_s=0.25, floor=None):
         self.link, self.rate, self.stale_s = link, rate, stale_s
+        self.floor = floor or {}            # drive_floor(): the min_duty field, if any
         self.l = self.r = 0.0
         self.t = 0.0
         self.ok = True
@@ -768,7 +805,7 @@ class DriveSender:
             with self.lock:
                 fresh = time.monotonic() - self.t <= self.stale_s
                 l, r = (self.l, self.r) if fresh else (0.0, 0.0)
-                self.link.send('drive', l=round(l, 3), r=round(r, 3))
+                self.link.send('drive', l=round(l, 3), r=round(r, 3), **self.floor)
             time.sleep(1.0 / self.rate)
 
     def stop(self):
@@ -838,12 +875,15 @@ def run_real(args, cfg):
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     reader = LatestFrame(cap)
     dry_run = getattr(args, 'dry_run', False)
+    floor = drive_floor(planner.o)
     link = None if dry_run else Link(args.esp_ip, args.port)
-    sender = None if dry_run else DriveSender(link)
+    sender = None if dry_run else DriveSender(link, floor=floor)
     per_px = float(cfg['arena'].get('mm_per_px', 2))
     last_print = 0.0
     print('Config:', args.config.resolve())
     print('Dry run (no robot commands).' if dry_run else 'Real robot control enabled.')
+    print(f"Drive floor: min_duty {floor['m']} (sent with every drive packet)" if floor
+          else 'Drive floor: firmware MIN_DUTY')
     print('Diagnostics:', run_dir / 'trace.jsonl')
     writer, video_frame = None, -1
     if getattr(args, 'record', False):
@@ -872,6 +912,11 @@ def run_real(args, cfg):
                 snap = perception.step(raw, now)
                 decision_t = time.monotonic()
                 status = link.status if link and link.status_age() < 1.0 else None
+                if floor and status and 'min_duty' not in status:
+                    # old firmware ignores "m" and would silently drive at its own MIN_DUTY
+                    print('Firmware does not report min_duty: flash firmware/robot_ctrl, '
+                          'or run without min_duty. Stopping.')
+                    break
                 l, r, events = planner.step(decision_t, snap.pose, snap.targets, snap.observations, status,
                                             perception_status=snap.status, require_status=not dry_run)
                 if sender:
@@ -902,7 +947,9 @@ def run_real(args, cfg):
                     canvas = np.full((h+116, max(w, 1000), 3), 25, np.uint8)
                     canvas[:h, :w] = frame
                     state = 'DRY RUN' if dry_run else status.get('state', '?') if status else 'NO LINK'
-                    lines = [f'{state} | vision={snap.status} | released={planner.released}', diagnostic_text(info),
+                    fw_floor = status.get('min_duty') if status else None
+                    lines = [f'{state} | vision={snap.status} | released={planner.released} | floor='
+                             + ('--' if fw_floor is None else f'{fw_floor:.2f}'), diagnostic_text(info),
                              f"frame={info['frame_ms']:.0f}ms | tag={info['tag_reason']} | orange cross=drive goal | q/x/ESC stop"]
                     if warning:
                         lines.append('grip/axle offset not calibrated')
@@ -954,10 +1001,19 @@ def main():
     p.add_argument('--noise', action='store_true', help='sim: pose noise, dropped frames, latency, failed grabs')
     p.add_argument('--field-physics', nargs='?', const='charged', choices=['charged', 'low-battery'],
                    help='sim: MIN_DUTY, turn behaviour, walls and tag loss near edges as measured on the field')
+    p.add_argument('--set', action='append', default=[], metavar='KEY=VALUE',
+                   help='override a calib.json "autonomy" value for this run, e.g. --set min_duty=0.5 '
+                        '--set creep=0.25 (saved in the run folder config.json)')
     args = p.parse_args()
     if not args.config.is_file():
         p.error(f'Config not found: {args.config}. Pass --config with your actual calibrated JSON file.')
     cfg = json.loads(args.config.read_text(encoding='utf-8'))
+    try:
+        apply_overrides(cfg, args.set)
+    except ValueError as exc:
+        p.error(str(exc))
+    if min_duty_problem(cfg):
+        p.error(min_duty_problem(cfg))
     if args.check_config:
         problems = setup_problems(cfg, args.config)
         print('Config:', args.config.resolve())

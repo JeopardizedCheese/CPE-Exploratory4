@@ -22,6 +22,16 @@ int main() {
   assert(motion::dutyToPwm(-.1f) == -26);
   assert(motion::dutyToPwm(1.5f) == 255);
   assert(motion::dutyToPwm(std::numeric_limits<float>::quiet_NaN()) == 0);
+  // legacy drive mapping: floor + |v| * (max - floor); MIN_DUTY 0.71 gives the old values
+  assert(motion::floorToPwm(0, .71f, 1) == 0);
+  assert(motion::floorToPwm(.005f, .71f, 1) == 0);      // below 0.01: coast
+  assert(motion::floorToPwm(.3f, .71f, 1) == 203);
+  assert(motion::floorToPwm(.5f, .71f, 1) == 218);
+  assert(motion::floorToPwm(1, .71f, 1) == 255);
+  assert(motion::floorToPwm(-.3f, .45f, 1) == -157);    // lower floor sent by autonomy (m)
+  assert(motion::floorToPwm(.4f, 0, 1) == 102);         // floor 0: plain duty
+  assert(motion::floorToPwm(2, .5f, 1) == 255);
+  assert(motion::floorToPwm(std::numeric_limits<float>::quiet_NaN(), .71f, 1) == 0);
   float out = 0;
   for (int k=0; k<20; ++k) {
     float next = motion::rampDuty(out, .5f, .01f, .6f);

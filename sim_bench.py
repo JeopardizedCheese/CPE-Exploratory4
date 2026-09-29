@@ -59,13 +59,12 @@ def main():
                     help='override calib.json "autonomy" values, e.g. turn_mode=fixed or cruise=0.25')
     args = ap.parse_args()
     cfg = json.loads(args.config.read_text(encoding='utf-8'))
-    for item in args.set:
-        key, value = item.split('=', 1)
-        try:
-            value = json.loads(value)
-        except ValueError:
-            pass                                  # plain string such as fixed
-        cfg.setdefault('autonomy', {})[key] = value
+    try:
+        autonomy.apply_overrides(cfg, args.set)
+    except ValueError as exc:
+        ap.error(str(exc))
+    if autonomy.min_duty_problem(cfg):
+        ap.error(autonomy.min_duty_problem(cfg))
     physics = {'charged': sim.FIELD_PARAMS, 'low-battery': sim.LOW_BATTERY_PARAMS, 'ideal': {}}[args.physics]
     print(f"physics={args.physics} seeds={args.seeds} seconds={args.seconds:.0f} overrides={args.set or 'none'}")
     for scenario in ('scattered', 'pile'):

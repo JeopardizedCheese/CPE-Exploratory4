@@ -13,7 +13,9 @@
 #define L_GAIN 1.00f         // straight-line trim: lower the stronger wheel (e.g. 0.90)
 #define R_GAIN 1.00f
 #define MAX_DUTY 1.00f       // 255 = full power
-#define MIN_DUTY 0.71f       // ~181/255: below 180 the motors stall (measured). Any non-zero command starts here
+#define MIN_DUTY 0.71f       // ~181/255: any non-zero drive command starts here (measured once, partly on USB
+                             // power: not trusted). A drive packet may send "m" to use another floor
+                             // (autonomy.py min_duty) without reflashing
 #define RAMP_PER_SEC 3.0f    // speed-up limit (full scale per second); slow-down is instant
 
 // New "duty" packets bypass MIN_DUTY and L/R_GAIN. Old "drive" packets retain

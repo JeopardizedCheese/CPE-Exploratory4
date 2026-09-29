@@ -104,6 +104,7 @@ class SimRobot:
         self.state, self.why = 'IDLE', 'boot'
         self.cmd = [0.0, 0.0]
         self.out = [0.0, 0.0]
+        self.floor = self.p['min_duty']   # MIN_DUTY, or "m" of the last drive packet
         self.last_drive = -1e9
         self.run_start = 0.0
         self.servo = [float(v) for v in self.p['servo_start']]
@@ -119,11 +120,13 @@ class SimRobot:
     # ------------------------------------------------------------ firmware side
     def command(self, c, now, **f):
         if c == 'drive':
-            l, r = f.get('l'), f.get('r')
-            if self.state != 'RUNNING' or l is None or r is None or abs(l) > 1 or abs(r) > 1:
-                self.cmd = [0.0, 0.0]
+            l, r, m = f.get('l'), f.get('r'), f.get('m')
+            m = self.p['min_duty'] if m is None else m     # like the firmware: no "m" = MIN_DUTY
+            if (self.state != 'RUNNING' or l is None or r is None or abs(l) > 1 or abs(r) > 1
+                    or not isinstance(m, (int, float)) or not 0 <= m <= 1):
+                self.cmd, self.out = [0.0, 0.0], [0.0, 0.0]
                 return
-            self.cmd, self.last_drive = [float(l), float(r)], now
+            self.cmd, self.last_drive, self.floor = [float(l), float(r)], now, float(m)
         elif c == 'start' and self.state == 'IDLE':
             self.state, self.why, self.run_start = 'RUNNING', 'start', now
         elif c == 'stop':
@@ -145,7 +148,7 @@ class SimRobot:
 
     def status(self, now):
         return {'state': self.state, 'why': self.why, 'l': self.out[0],
-                'r': self.out[1], 'servo': [round(v) for v in self.servo]}
+                'r': self.out[1], 'min_duty': self.floor, 'servo': [round(v) for v in self.servo]}
 
     # ------------------------------------------------------------ physics
     def _draw_breakaway(self):
@@ -155,7 +158,7 @@ class SimRobot:
     def _wheel_speeds(self, dt=0.0):
         """mm/s per wheel from firmware output, through MIN_DUTY, motor stall and spin friction."""
         p = self.p
-        duty = [0.0 if abs(o) < 0.01 else math.copysign(p['min_duty'] + abs(o) * (1 - p['min_duty']), o)
+        duty = [0.0 if abs(o) < 0.01 else math.copysign(self.floor + abs(o) * (1 - self.floor), o)
                 for o in self.out]
         spin = duty[0] * duty[1] < 0
         if not spin:

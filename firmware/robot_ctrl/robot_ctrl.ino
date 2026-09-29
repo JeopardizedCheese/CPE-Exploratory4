@@ -33,19 +33,17 @@ uint16_t peerPort = 0;
 
 float cmdL = 0, cmdR = 0, outL = 0, outR = 0;   // -1..1: commands/outputs, NOT measured speeds
 bool directDuty = false;
+float driveFloor = MIN_DUTY;  // legacy drive floor: MIN_DUTY, or "m" of the last drive packet
 int pwmL = 0, pwmR = 0;  // actual signed PWM written to the library, before pin inversion
 float servoPos = SERVO_START_DEG, servoTarget = SERVO_START_DEG;
 bool servoActive = false;                       // no pulses until the first grip/servo command
 
 // ---------------------------------------------------------------- wheels
 // -1..1 -> signed speed for InEngMotor::drive. Any non-zero command gets at least
-// MIN_DUTY so the motors never sit stalled; 0 means coast.
+// driveFloor (MIN_DUTY unless the drive packet sends "m") so the motors never sit
+// stalled; 0 means coast.
 int toSpeed(float v) {
-  v = constrain(v, -1.0f, 1.0f);
-  float mag = fabsf(v);
-  if (mag < 0.01f) return 0;
-  int s = (int)roundf((MIN_DUTY + mag * (MAX_DUTY - MIN_DUTY)) * 255.0f);
-  return v > 0 ? s : -s;
+  return motion::floorToPwm(v, driveFloor, MAX_DUTY);
 }
 
 void applyMotors() {
@@ -146,8 +144,18 @@ void handlePacket(char *buf, unsigned long now) {
       return;
     }
     bool requestedDuty = !strcmp(c, "duty");
+    // Optional "m" on drive packets: floor duty in place of MIN_DUTY for this packet.
+    float m = MIN_DUTY;
+    if (!requestedDuty && !doc["m"].isNull()) {
+      m = doc["m"] | NAN;
+      if (!isfinite(m) || m < 0 || m > MAX_DUTY) {
+        motorsOff();
+        return;
+      }
+    }
     if (requestedDuty != directDuty) motorsOff();  // do not reinterpret a moving output
     directDuty = requestedDuty;
+    if (!requestedDuty) driveFloor = m;
     cmdL = l; cmdR = r; lastDrive = now;
   } else if (!strcmp(c, "start")) {
     if (state == IDLE) enter(RUNNING, "start");
@@ -186,6 +194,7 @@ void sendStatus(unsigned long now) {
   doc["r"] = outR;
   doc["direct_pwm"] = 1;  // feature version; old firmware has no such field
   doc["mode"] = directDuty ? "duty" : "legacy";
+  doc["min_duty"] = driveFloor;  // legacy floor in use; old firmware has no such field
   doc["pwm_l"] = pwmL;
   doc["pwm_r"] = pwmR;
   doc["session"] = activeSession;

@@ -85,6 +85,8 @@ to stop applying turn power early. No unmeasured braking distance is promised.
 `autonomy.py`, gesture control and `teleop.py` do not silently use the wrong pulse
 calibration. Use **motion_control.py** for the new mode. This is a separate motion
 test/controller, not a claim that the autonomous sorting route is now calibrated.
+To try a lower floor in autonomy, use `autonomy.py --set min_duty=X`: it keeps `drive`
+packets and the legacy ramp, and only replaces MIN_DUTY for that run (field `m`).
 The existing simulator/fake_robot does not advertise the new firmware feature.
 
 ## Set up and measure before tuning
