@@ -7,7 +7,7 @@
   "autonomy": {
     "cruise": 0.3,
     "grip_open": 0,
-    "grip_close": 40,
+    "grip_close": 90,
     "approach_max_side_mm": 11
   },
   "arena": {
@@ -1015,14 +1015,14 @@
       600
     ],
     "grip_offset_mm": [
-      215,
+      140,
       0
     ],
     "axle_offset_mm": -40,
     "size_tolerance": 0.25,
     "heading_offset_deg": 0,
     "footprint_mm": {
-      "front": 210,
+      "front": 135,
       "back": 90,
       "left": 75,
       "right": 75
