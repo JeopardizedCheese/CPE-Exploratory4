@@ -49,17 +49,31 @@ DEFAULT_PARAMS = {
     'stall_duty': 0.0,           # below this duty the wheel does not turn; speed grows from here to 1.0
     'spin_speed_scale': 1.0,     # turning in place is slower than wheel kinematics (tyre scrub)
     'spin_breakaway': None,      # (lo, hi): duty needed to start turning in place, drawn at each start
+    'spin_speed_jitter': 0.0,    # sigma of a log-normal speed factor drawn at each turn start
+    'spin_slip_duty': None,      # at or above this duty a turn in place may lose grip entirely...
+    'spin_slip_per_s': 0.0,      # ...at this rate per second held there (until duty drops again)
     'wall_mm': 0.0,              # the body stops the tag this far from a wall
     'tag_edge_mm': 0.0,          # no pose within this distance of the arena edge (tag out of frame)
 }
 
-# Fitted to the 2026-09-29 field traces (runs/autonomy/20260929-02*): forward 0.3 -> ~190 mm/s,
-# 0.6 -> ~370 mm/s; spin 0.3 stalls about half the time and turns ~30 deg/s on average;
-# tag lost 100-170 mm from the edge; ~0.1 s from exposure to decision. A model, not a measurement of every robot.
-FIELD_PARAMS = {'min_duty': 0.71, 'stall_duty': 0.70, 'max_speed_mm_s': 600.0,
-                'spin_speed_scale': 0.35, 'spin_breakaway': (0.76, 0.84),
+# Fitted to the charged-battery field runs (runs/autonomy/20260929-07*): command -> camera
+# delay 0.2 s; a turn from rest starts at once and turns ~12/21/32/57 deg in the first
+# 0.1/0.15/0.2/0.3 s (3x scatter); held at full turn power (duty ~0.88) the robot mostly
+# did not turn (83%; wheel slip or motor current, not yet known). Forward 0.2 -> ~430 mm/s,
+# 0.3 -> ~530 mm/s: on a charged battery MIN_DUTY alone already drives fast.
+# Tag lost 100-170 mm from the edge. A model, not a measurement of every robot.
+FIELD_PARAMS = {'min_duty': 0.71, 'stall_duty': 0.65, 'max_speed_mm_s': 1266.0,
+                'spin_speed_scale': 0.35, 'spin_breakaway': (0.711, 0.75), 'spin_speed_jitter': 0.45,
+                'spin_slip_duty': 0.86, 'spin_slip_per_s': 1.5,
                 'wall_mm': 100.0, 'tag_edge_mm': 130.0,
-                'latency_s': 0.1}           # ~50 ms processing + camera delay
+                'latency_s': 0.2}
+
+# The earlier runs on a nearly flat battery (runs/autonomy/20260929-02*): turning in place
+# needed duty 0.76-0.84 to start and averaged ~30 deg/s at 0.3; forward 0.3 -> ~190 mm/s.
+LOW_BATTERY_PARAMS = dict(FIELD_PARAMS, stall_duty=0.70, max_speed_mm_s=600.0,
+                          spin_speed_scale=0.35, spin_breakaway=(0.76, 0.84),
+                          spin_speed_jitter=0.0, spin_slip_duty=None, spin_slip_per_s=0.0,
+                          latency_s=0.1)
 
 
 def in_polygon(x, y, poly):
@@ -99,6 +113,7 @@ class SimRobot:
         self.history = []            # (t, x, y, h) for latency
         self.spinning = False        # turning in place has broken free of static friction
         self.breakaway = self._draw_breakaway()
+        self.spin_factor, self.slipping = 1.0, False
         self.log = []
 
     # ------------------------------------------------------------ firmware side
@@ -137,7 +152,7 @@ class SimRobot:
         b = self.p['spin_breakaway']
         return self.rng.uniform(*b) if b else 0.0
 
-    def _wheel_speeds(self):
+    def _wheel_speeds(self, dt=0.0):
         """mm/s per wheel from firmware output, through MIN_DUTY, motor stall and spin friction."""
         p = self.p
         duty = [0.0 if abs(o) < 0.01 else math.copysign(p['min_duty'] + abs(o) * (1 - p['min_duty']), o)
@@ -151,10 +166,20 @@ class SimRobot:
             self.spinning = min(abs(d) for d in duty) >= self.breakaway
             if not self.spinning:
                 return [0.0, 0.0], spin                      # stuck: wheels hum, robot does not turn
+            self.spin_factor = math.exp(self.rng.gauss(0, p['spin_speed_jitter'])) if p['spin_speed_jitter'] else 1.0
+            self.slipping = False
+        if spin and p['spin_slip_duty']:
+            high = min(abs(d) for d in duty) >= p['spin_slip_duty']
+            if high and not self.slipping and self.rng.random() < p['spin_slip_per_s'] * dt:
+                self.slipping = True                         # lost grip at high power
+            if not high:
+                self.slipping = False
+            if self.slipping:
+                return [0.0, 0.0], spin
         stall = p['stall_duty']
         speed = [math.copysign(max(0.0, abs(d) - stall) / (1 - stall), d) * p['max_speed_mm_s'] for d in duty]
         if spin:
-            speed = [v * p['spin_speed_scale'] for v in speed]
+            speed = [v * p['spin_speed_scale'] * self.spin_factor for v in speed]
         return speed, spin
 
     def grip_point(self, x=None, y=None, h=None):
@@ -177,7 +202,7 @@ class SimRobot:
             else:
                 step = self.p['ramp_per_s'] * dt
                 self.out[i] = min(c, o + step) if c > o else max(c, o - step)
-        (sl, sr), _ = self._wheel_speeds()
+        (sl, sr), _ = self._wheel_speeds(dt)
         v = (sl + sr) / 2
         w = (sl - sr) / self.p['wheel_base_mm']            # rad/s, clockwise
         a = self.p['axle_offset_mm']

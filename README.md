@@ -302,7 +302,7 @@ python autonomy.py --sim --show                   # simulated robot + field, wat
 python autonomy.py --sim --noise --scenario pile  # with pose noise, latency, dropped tags, failed grabs
 python autonomy.py --sim --field-physics          # + MIN_DUTY, spin stalls, walls, tag loss near edges (fitted to field traces)
 python autonomy.py <ESP_IP> --camera 1 # after field and firmware validation
-python autonomy.py <ESP_IP> --camera 1 --record   # also saves video.mp4 (raw frames) beside trace.jsonl
+python autonomy.py <ESP_IP> --camera 1 --record   # also saves video.avi (raw frames) beside trace.jsonl
 python -m unittest discover -s tests              # includes simulated runs and safety tests
 ```
 

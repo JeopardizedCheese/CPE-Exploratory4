@@ -4,7 +4,7 @@
     python autonomy.py --sim --scenario scattered   # easier field
     python autonomy.py 10.178.188.50 --camera 1     # real robot (sends 'start'; q/x/ESC stops)
     python autonomy.py --dry-run --camera 1       # camera/planner only, no robot commands
-    python autonomy.py 10.178.188.50 --camera 1 --record   # also save video.mp4 for replay
+    python autonomy.py 10.178.188.50 --camera 1 --record   # also save video.avi for replay
 
 The planner is deliberately simple:
 
@@ -38,6 +38,7 @@ import time
 import uuid
 from pathlib import Path
 
+from robot_pose import Pose
 from target_lock import TargetLock
 
 DEFAULTS = {
@@ -48,26 +49,29 @@ DEFAULTS = {
     'turn_in_place_deg': 35,        # larger heading error: stop and turn first
     'stage_mm': 160, 'stage_tol_mm': 35, 'align_tol_deg': 6,
     'grip_tol_mm': 6, 'approach_max_side_mm': 18,   # about half of (open jaw gap - stone width)
-    'zone_tol_mm': 45, 'backoff_s': 0.9,
+    'zone_tol_mm': 45,
+    'backoff_mm': 120, 'backoff_s': 1.5,    # reverse this far after a pick/skip; time cap
+    # The camera shows a command's effect ~0.2 s later (measured). Plan from where the robot
+    # is now: the last pose moved on by the recent velocity for this long. At rest nothing
+    # changes; at 500 mm/s it is 100 mm. false = plan from the raw (old) pose.
+    'camera_delay_s': 0.2, 'predict_pose': True,
     'pose_timeout_s': 0.5, 'servo_tol_deg': 3, 'servo_timeout_s': 2.0,
     'timeouts_s': {'GOTO_STAGE': 15, 'ALIGN': 6, 'APPROACH': 8, 'SEARCH_IDLE': 2.5, 'PARK': 10},
     'skip_s': 25, 'skip_mm': 40, 'pick_check_mm': 180, 'pile_avoid_mm': 170,
     'grip_open': 0, 'grip_close': 40, 'grip_servo': 0,   # = GRIP_OPEN/CLOSE_DEG in config.h
     'park_mm': None,                 # where to wait when nothing is pickable; default right side
     'stone_height_mm': 20,
-    # Turning in place is closed-loop on the turn rate measured from the tag: the tyres need
-    # about 0.8 duty to start turning but much less to keep turning, so any fixed power
-    # either stalls or whips round and overshoots. Power rises while the robot does not turn
-    # and drops as soon as it turns faster than wanted. false = old fixed-power turns.
-    'turn_rate_control': True,
-    'turn_rate_max_dps': 60,         # wanted turn rate far from the goal heading
-    'turn_rate_min_dps': 20,         # wanted turn rate close to it
-    'turn_rate_per_deg': 2.0,        # wanted deg/s per degree of heading error
-    'turn_power_max': 0.6,           # never push harder than this to break free
-    'turn_boost_per_s': 0.4,         # power rise per second while turning too slowly
-    'turn_breakaway_cut': 0.6,       # once it starts turning, drop power to this fraction
-    'turn_ease_per_s': 1.2,          # power drop per second while turning too fast
-    'turn_lead_s': 0.12,             # camera + processing delay: stop turning this early
+    # Turning in place is done in pulses: turn for a short time sized to part of the remaining
+    # angle, stop, wait until the camera shows where the robot ended up, repeat. The camera
+    # reports a turn ~0.2 s after the command, and once turning the robot does 150-300 deg/s,
+    # so continuous control reacts ~60 deg late; held at full turn power it often did not turn
+    # at all. 'fixed' = the old continuous fixed-power turns.
+    'turn_mode': 'pulse',
+    'pulse_power': 0.5,              # spin command during a pulse (the firmware ramps up to it)
+    'pulse_fraction': 0.7,           # plan each pulse for this share of the remaining angle
+    'pulse_max_deg': 60,             # never plan more than this in one pulse
+    'pulse_min_s': 0.07, 'pulse_max_s': 0.4,
+    'pulse_settle_s': 0.25,          # stopped after a pulse: command-to-camera delay + one frame
     'turn_exit_deg': 15,             # a turn toward a drive goal continues until this close
                                      # (hysteresis against turn_in_place_deg: no turn/drive dance)
     'turn_keep_dir_deg': 150,        # goal almost behind: keep the current turn direction
@@ -75,6 +79,26 @@ DEFAULTS = {
                                      # straight back a few cm instead of turning on the spot forever
     'kp_drive': 0.5,                 # steering per radian while driving forward
 }
+
+
+# Median rotation (deg) of a turn pulse from rest, by pulse length (s), measured on the
+# field with a charged battery (runs/autonomy/20260929-07*). Spread is about 3x either way;
+# Planner.pulse_gain learns this robot's factor on the run.
+PULSE_TABLE = [(0.0, 0.0), (0.07, 6.0), (0.1, 12.0), (0.15, 20.0), (0.2, 31.0), (0.3, 55.0), (0.4, 78.0)]
+
+
+def pulse_degrees(seconds):
+    for (t0, d0), (t1, d1) in zip(PULSE_TABLE, PULSE_TABLE[1:]):
+        if seconds <= t1:
+            return d0 + (d1 - d0) * max(0.0, seconds - t0) / (t1 - t0)
+    return PULSE_TABLE[-1][1]
+
+
+def pulse_seconds(degrees):
+    for (t0, d0), (t1, d1) in zip(PULSE_TABLE, PULSE_TABLE[1:]):
+        if degrees <= d1:
+            return t0 + (t1 - t0) * max(0.0, degrees - d0) / (d1 - d0)
+    return PULSE_TABLE[-1][0]
 
 
 def wrap(a):
@@ -112,12 +136,13 @@ class Planner:
         self.events_log = []
         self.pile_center = None
         self.motion = []                    # (t, x, y, heading_deg, l, r) for stall diagnostics
-        self.turn_power = None              # last spin power that turned the robot (learned)
+        self.backoff_from = None            # where BACKOFF started reversing
+        self._pulse = None                  # current turn pulse: timing, direction, start heading
+        self.pulse_gain = 1.0               # learned: this robot turns gain x PULSE_TABLE
+        self._stuck_pulses = 0              # consecutive pulses that did not turn the robot
+        self._pulse_done_t = -1e9           # when the last pulse's wait ended (pose time)
         self._spin_dir = 0.0
-        self._spin_power = 0.0
-        self._spin_moving = False
-        self._was_spinning = False          # _drive_to: previous frame turned in place
-        self.turn_t = None                  # time of the last spin command
+        self._was_spinning = False          # _drive_to: inside a turn toward the goal
         self.debug = {}
 
     # ------------------------------------------------------------ helpers
@@ -266,7 +291,7 @@ class Planner:
         o = self.o
         self.debug.update(goal_x_mm=gx, goal_y_mm=gy, goal_distance_mm=dist,
                           heading_error_deg=math.degrees(err))
-        turning = o['turn_rate_control'] and self._was_spinning
+        turning = o['turn_mode'] == 'pulse' and self._was_spinning
         if o['backout_inside_reach'] and abs(err) > math.pi / 2:
             ax, ay = self._axle(pose)
             reach = math.hypot(px - ax, py - ay)
@@ -277,13 +302,13 @@ class Planner:
                 return -o['creep'], -o['creep']
         if turning and abs(err) > math.radians(o['turn_keep_dir_deg']) and err * self._spin_dir < 0:
             err = math.copysign(abs(err), self._spin_dir)   # +-180 flip: do not reverse the turn
-        if turning:
-            left = err - math.radians(self._yaw_rate() * o['turn_lead_s'])   # after the camera delay
-            turning = abs(left) > math.radians(o['turn_exit_deg']) and left * err > 0
-        if abs(err) > math.radians(o['turn_in_place_deg']) or turning:
-            self.debug['reason'] = 'turn_to_goal'
-            self._was_spinning = True
-            return self._spin(err, pose.t)
+        if abs(err) > math.radians(o['turn_in_place_deg']) or turning or self._pulse:
+            cmd = self._turn_step(err, pose, o['turn_exit_deg'] if o['turn_mode'] == 'pulse'
+                                  else o['turn_in_place_deg'])
+            if cmd is not None:
+                self.debug['reason'] = 'turn_to_goal'
+                self._was_spinning = True
+                return cmd
         self._was_spinning = False
         v = speed * clamp(dist / 200.0, 0.4, 1.0) * math.cos(err)
         # Near the goal, v gets smaller while the old steering term did not.
@@ -297,56 +322,50 @@ class Planner:
     def _turn_to(self, pose, heading):
         err = wrap(heading - math.radians(pose.heading_deg))
         self.debug.update(heading_error_deg=math.degrees(err), reason='turn_to_approach')
-        lead = math.radians(self._yaw_rate() * self.o['turn_lead_s']) if self.o['turn_rate_control'] else 0.0
-        if abs(err) <= math.radians(self.o['align_tol_deg']) or \
-                (err * lead > 0 and abs(err - lead) <= math.radians(self.o['align_tol_deg'])):
-            return None                     # there, or still coasting there within the camera delay
-        return self._spin(err, pose.t)
+        return self._turn_step(err, pose, self.o['align_tol_deg'])
 
-    def _yaw_rate(self, window=0.25):
-        """Measured turn rate (deg/s, + = heading increasing) from recent fresh poses."""
-        if not self.motion:
-            return 0.0
-        end = self.motion[-1]
-        pts = [m for m in self.motion if end[0] - m[0] <= window]
-        if end[0] - pts[0][0] < 0.08:
-            return 0.0
-        return math.degrees(wrap(math.radians(end[3] - pts[0][3]))) / (end[0] - pts[0][0])
-
-    def _spin(self, err, now):
-        """Turn in place towards heading error err (rad): returns (l, r)."""
+    def _turn_step(self, err, pose, done_deg):
+        """One frame of turning in place toward heading error err (rad). Returns (l, r), or
+        None once the robot is at rest within done_deg (never in the middle of a pulse)."""
         o = self.o
-        if not o['turn_rate_control']:
+        if o['turn_mode'] != 'pulse':
+            if abs(err) <= math.radians(done_deg):
+                return None
             w = math.copysign(max(o['min_turn'], min(o['turn'], o['kp_turn'] * abs(err))), err)
             return w, -w
-        err_deg = abs(math.degrees(err))
-        wanted = clamp(o['turn_rate_per_deg'] * err_deg, o['turn_rate_min_dps'], o['turn_rate_max_dps'])
-        rate = self._yaw_rate() * math.copysign(1, err)       # + = turning the right way
-        dt = 0.0 if self.turn_t is None else clamp(now - self.turn_t, 0.0, 0.2)
-        if self.turn_t is None or now - self.turn_t > 0.5 or self._spin_dir * err < 0:
-            # new turn: start a little below what last broke the robot free
-            power = o['min_turn'] if self.turn_power is None else max(o['min_turn'], self.turn_power - 0.05)
-            self._spin_moving = False
-        else:
-            power = self._spin_power
-            if not self._spin_moving and rate > 0.5 * wanted:
-                # Broke free. The camera saw it ~turn_lead_s late, and power kept rising
-                # meanwhile: remember the power at the break, and cut, because keeping
-                # a turn going takes much less than starting it.
-                self._spin_moving = True
-                self.turn_power = max(o['min_turn'], power - o['turn_boost_per_s'] * o['turn_lead_s'])
-                power *= o['turn_breakaway_cut']
-            elif rate < 0.5 * wanted:
-                power += o['turn_boost_per_s'] * dt
-                if rate < 5:
-                    self._spin_moving = False   # stuck again: the next start is a new break
-            elif rate > 1.3 * wanted:
-                power -= o['turn_ease_per_s'] * dt
-        power = clamp(power, o['min_turn'], o['turn_power_max'])
-        self._spin_power, self.turn_t, self._spin_dir = power, now, math.copysign(1, err)
-        self.debug.update(turn_power=power, turn_rate_dps=rate, turn_wanted_dps=wanted)
-        w = math.copysign(power, err)
+        now, pl = pose.t, self._pulse
+        if pl is not None:
+            if now < pl['end']:
+                self.debug.update(turn_phase='turn_pulse', turn_pulse_s=pl['end'] - pl['start'])
+                w = pl['dir'] * o['pulse_power']
+                return w, -w
+            if now < pl['settle']:
+                self.debug['turn_phase'] = 'turn_settle'
+                return 0.0, 0.0
+            self._finish_pulse(pose)
+        if abs(err) <= math.radians(done_deg):
+            return None
+        wanted = min(abs(math.degrees(err)) * o['pulse_fraction'], o['pulse_max_deg'])
+        length = clamp(pulse_seconds(wanted / self.pulse_gain), o['pulse_min_s'], o['pulse_max_s'])
+        direction = math.copysign(1.0, err)
+        self._pulse = {'start': now, 'end': now + length, 'settle': now + length + o['pulse_settle_s'],
+                       'dir': direction, 'heading0': pose.heading_deg,
+                       'planned_deg': self.pulse_gain * pulse_degrees(length)}
+        self._spin_dir = direction
+        self.debug.update(turn_phase='turn_pulse', turn_pulse_s=length, turn_planned_deg=wanted)
+        w = direction * o['pulse_power']
         return w, -w
+
+    def _finish_pulse(self, pose):
+        """The camera now shows where the last pulse ended: learn how far pulses turn."""
+        pl, self._pulse = self._pulse, None
+        self._pulse_done_t = pose.t
+        moved =pl['dir'] * math.degrees(wrap(math.radians(pose.heading_deg - pl['heading0'])))
+        self._stuck_pulses = self._stuck_pulses + 1 if moved < 2 else 0
+        if pl['planned_deg'] > 3:
+            ratio = clamp(max(moved, 0.5) / pl['planned_deg'], 0.25, 4.0)
+            self.pulse_gain = clamp(self.pulse_gain * math.sqrt(ratio), 0.3, 3.0)
+        self.debug.update(turn_moved_deg=moved, pulse_gain=self.pulse_gain)
 
     # ------------------------------------------------------------ main step
     def step(self, now, pose, targets, observations, status=None, *,
@@ -370,6 +389,9 @@ class Planner:
         else:
             result = self._step(now, pose, targets, observations, status)
         l, r, events = result
+        pl = self._pulse
+        if pl is not None and ((now < pl['end'] and l * r >= 0) or now > pl['settle'] + 0.5):
+            self._pulse = None              # cut short by another state, or stale: learn nothing
         if self.state != before:
             why = self.events_log[-1][3] if self.events_log else ''
             self.debug['reason'] = f'{before}->{self.state}' + (f': {why}' if why else '')
@@ -380,10 +402,39 @@ class Planner:
                           stalled=self._stalled(now, pose, l, r))
         return result
 
+    def _predict(self, pose):
+        """pose moved on by camera_delay_s at the velocity of the last ~0.15 s of poses."""
+        if self._pulse is not None or pose.t - self._pulse_done_t < 0.25:
+            return pose     # turn pulses measure at rest; the pulse's own motion is not a velocity
+        # velocity over >= 0.12 s: a shorter baseline (e.g. just after a missed tag frame)
+        # turns a few mm of tag noise into a fast "motion" and a 20 mm jump
+        past = [m for m in self.motion if 0.12 <= pose.t - m[0] <= 0.25]
+        if not past:
+            return pose
+        t0, x0, y0, h0 = past[0][:4]
+        # Fade in between 60 and 120 mm/s: below that it is mostly tag jitter, and a hard
+        # threshold would switch the prediction on and off (the pose jumping 10-20 mm).
+        # Real driving is faster: creep ~400 mm/s charged, ~100 mm/s on a flat battery.
+        speed = math.hypot(pose.x - x0, pose.y - y0) / (pose.t - t0)
+        k = self.o['camera_delay_s'] / (pose.t - t0) * clamp((speed - 60) / 60, 0.0, 1.0)
+        dx = clamp((pose.x - x0) * k, -200, 200)
+        dy = clamp((pose.y - y0) * k, -200, 200)
+        dh = 0.0            # pulse mode: heading changes only in pulses, measured at rest
+        if self.o['turn_mode'] != 'pulse':
+            dh = clamp(math.degrees(wrap(math.radians(pose.heading_deg - h0))) * k, -60, 60)
+        a = math.radians(dh)
+        gx, gy = pose.grip_x - pose.x, pose.grip_y - pose.y
+        x, y = pose.x + dx, pose.y + dy
+        self.debug.update(predict_mm=math.hypot(dx, dy), predict_deg=dh)
+        return Pose(x, y, pose.heading_deg + dh, x + gx * math.cos(a) - gy * math.sin(a),
+                    y + gx * math.sin(a) + gy * math.cos(a), pose.side_mm, pose.t)
+
     def _stalled(self, now, pose, l, r):
         """Diagnostic only: wheels commanded for stall_window_s but the tag has not moved
         (wall contact, wheel slip, or turning below the torque needed to scrub the tyres).
         Returns None, 'drive' or 'spin'. Does not change any command."""
+        if self._stuck_pulses >= 3:
+            return 'spin'                   # three turn pulses in a row did not turn the robot
         if pose is None or now - pose.t > self.o['pose_timeout_s']:
             self.motion = []
             return None
@@ -414,6 +465,8 @@ class Planner:
             xs = [o['x'] for o in observations]
             ys = [o['y'] for o in observations]
             self.pile_center = (sorted(xs)[len(xs) // 2], sorted(ys)[len(ys) // 2])
+        if self.o['predict_pose']:
+            pose = self._predict(pose)
         o, s = self.o, self.state
         usable = [t for t in targets if self._usable(t, now)]
         heading = math.radians(pose.heading_deg)
@@ -526,9 +579,11 @@ class Planner:
             wanted = self.heading + math.atan2(side, o.get('approach_lookahead_mm', 150))
             err = wrap(wanted - heading)
             self.debug['heading_error_deg'] = math.degrees(err)
-            if abs(err) > math.radians(20):                  # badly off: turn on the spot first
-                self.debug['reason'] = 'turn_to_approach'
-                return (*self._spin(err, pose.t), ev)
+            if self._pulse is not None or abs(err) > math.radians(20):   # badly off: turn first
+                cmd = self._turn_step(err, pose, 20)
+                if cmd is not None:
+                    self.debug['reason'] = 'turn_to_approach'
+                    return (*cmd, ev)
             v = o['creep']
             limit = min(.12, abs(v) * clamp(o['max_forward_steer_ratio'], 0, .95))
             steer = clamp(0.8 * err, -limit, limit)
@@ -583,10 +638,15 @@ class Planner:
             return 0.0, 0.0, ev
 
         if s == 'BACKOFF':
-            if self._elapsed(now) > o['backoff_s']:
+            if self.backoff_from is None or self._elapsed(now) < 0.05:
+                self.backoff_from = (pose.x, pose.y)
+            moved = math.hypot(pose.x - self.backoff_from[0], pose.y - self.backoff_from[1])
+            self.debug['backoff_mm'] = moved
+            if moved >= o['backoff_mm'] or self._elapsed(now) > o['backoff_s']:
+                self.backoff_from = None
                 self._go('SEARCH', now)
                 return 0.0, 0.0, ev
-            return -o['creep'] * 1.5, -o['creep'] * 1.5, ev
+            return -o['creep'], -o['creep'], ev
 
         return 0.0, 0.0, ev
 
@@ -602,12 +662,15 @@ def grip_calibration_warning(cfg):
 
 
 # ------------------------------------------------------------ simulation runner
-def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=False, rate=10.0):
+def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=False, rate=30.0):
     import sim
     w, h = cfg['arena']['size_mm']
     x, y, hd = start or (w * 0.92, h * 0.5, 180.0)
     robot = sim.SimRobot(cfg, stones, x, y, hd, params=params, seed=seed)
     planner = Planner(cfg)
+    if 'camera_delay_s' not in cfg.get('autonomy', {}):
+        # predict over the simulated robot's own delay, as camera_delay_s is measured on the real one
+        planner.o['camera_delay_s'] = robot.p['latency_s'] + 0.5 / rate
     dt, t, next_frame = 0.02, 0.0, 0.0
     pose, targets, obs = None, [], []
     l = r = 0.0
@@ -784,7 +847,9 @@ def run_real(args, cfg):
     print('Diagnostics:', run_dir / 'trace.jsonl')
     writer, video_frame = None, -1
     if getattr(args, 'record', False):
-        print('Recording:', run_dir / 'video.mp4', '(raw frames; trace video_frame = frame index)')
+        # MJPG in AVI: every frame is a complete JPEG, so the file stays readable even if the
+        # program is killed before it is closed (an unclosed .mp4 has no index and won't open).
+        print('Recording:', run_dir / 'video.avi', '(raw frames; trace video_frame = frame index)')
     try:
         with (run_dir / 'trace.jsonl').open('w', encoding='utf-8') as trace:
             if sender:
@@ -799,8 +864,9 @@ def run_real(args, cfg):
                 if getattr(args, 'record', False):
                     if writer is None:
                         h, w = raw.shape[:2]
-                        writer = cv2.VideoWriter(str(run_dir / 'video.mp4'), cv2.VideoWriter_fourcc(*'mp4v'),
+                        writer = cv2.VideoWriter(str(run_dir / 'video.avi'), cv2.VideoWriter_fourcc(*'MJPG'),
                                                  args.record_fps, (w, h))
+                        writer.set(cv2.VIDEOWRITER_PROP_QUALITY, 80)
                     writer.write(raw)
                     video_frame += 1
                 snap = perception.step(raw, now)
@@ -848,16 +914,21 @@ def run_real(args, cfg):
                 if status and status.get('state') == 'IDLE' and status.get('why') == 'remote stop':
                     break
     finally:
+        # Each step on its own: a failed network send (Wi-Fi gone) must not skip the others.
+        def attempt(what, fn):
+            try:
+                fn()
+            except Exception as exc:          # keep shutting down; report and continue
+                print(f'shutdown: {what} failed: {exc}')
         if sender:
-            sender.stop()
-            link.send('drive', l=0, r=0)
-            link.send('stop')
-            link.sock.close()
-        reader.stop()
-        cap.release()
+            attempt('stop sender', sender.stop)
+            attempt('stop wheels', lambda: (link.send('drive', l=0, r=0), link.send('stop')))
+            attempt('close link', link.sock.close)
         if writer is not None:
-            writer.release()
-        cv2.destroyAllWindows()
+            attempt('close video', writer.release)
+        attempt('stop camera reader', reader.stop)
+        attempt('release camera', cap.release)
+        attempt('close windows', cv2.destroyAllWindows)
         print('released', planner.released, 'events:', planner.events_log[-10:])
 
 
@@ -871,8 +942,9 @@ def main():
     p.add_argument('--dry-run', action='store_true', help='Live camera/planner preview, no UDP or robot commands')
     p.add_argument('--check-config', action='store_true', help='Check calibration files without camera or robot')
     p.add_argument('--record', action='store_true',
-                   help='Save the processed raw camera frames to video.mp4 next to trace.jsonl (replay with detect_live.py --video)')
-    p.add_argument('--record-fps', type=float, default=15, help='Playback rate written into video.mp4; timing is in trace.jsonl')
+                   help='Save the processed raw camera frames to video.avi next to trace.jsonl (replay with detect_live.py --video)')
+    p.add_argument('--record-fps', type=float, default=30,
+                   help='Playback rate written into video.avi (the loop runs ~30 fps); exact timing is in trace.jsonl')
     p.add_argument('--log-dir', type=Path, default=Path('runs/autonomy'), help='Config and per-frame decision logs')
     p.add_argument('--sim', action='store_true', help='simulated robot and field')
     p.add_argument('--scenario', choices=['pile', 'scattered'], default='pile')
@@ -880,8 +952,8 @@ def main():
     p.add_argument('--seconds', type=float, default=300)
     p.add_argument('--seed', type=int, default=0)
     p.add_argument('--noise', action='store_true', help='sim: pose noise, dropped frames, latency, failed grabs')
-    p.add_argument('--field-physics', action='store_true',
-                   help='sim: MIN_DUTY, spin stalls, walls and tag loss near edges as measured on the field')
+    p.add_argument('--field-physics', nargs='?', const='charged', choices=['charged', 'low-battery'],
+                   help='sim: MIN_DUTY, turn behaviour, walls and tag loss near edges as measured on the field')
     args = p.parse_args()
     if not args.config.is_file():
         p.error(f'Config not found: {args.config}. Pass --config with your actual calibrated JSON file.')
@@ -898,7 +970,7 @@ def main():
                    'latency_s': 0.12, 'grip_success': 0.85} if args.noise else {})
         if args.field_physics:
             import sim
-            params.update(sim.FIELD_PARAMS)
+            params.update(sim.FIELD_PARAMS if args.field_physics == 'charged' else sim.LOW_BATTERY_PARAMS)
         result = run_sim(cfg, scenario(cfg, args.scenario, args.seed), args.seconds, params=params,
                          seed=args.seed, show=args.show)
         for entry in result['log']:

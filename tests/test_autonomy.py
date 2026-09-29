@@ -68,6 +68,7 @@ class Safety(unittest.TestCase):
 
     def test_release_only_inside_own_zone(self):
         p = Planner(config())
+        p.o['predict_pose'] = False             # the second pose is a jump, not a motion to extrapolate
         p.state, p.since, p.carrying, p.pick_checked = 'CARRY', 0.0, 4, True
         _, _, ev = p.step(5.0, pose(1000, 800, 0, 5.0), [], [], {'state': 'RUNNING', 'servo': [120]})
         self.assertNotIn(('grip', {'p': 'open'}), ev)
@@ -129,6 +130,7 @@ class CarryRoute(unittest.TestCase):
         robot = sim.SimRobot(cfg, [], 80, 800, 0)            # grip point (200, 800)
         robot.command('start', 0.0)
         p = Planner(cfg)
+        p.o['camera_delay_s'] = 0.05                         # ideal sim: no camera delay to predict over
         p.state, p.since, p.carrying, p.pick_checked = 'CARRY', 0.0, 4, True   # to orange (1470, 1050)
         sky_x, sky_y = 870, 1050                              # straight line passes 118 mm from its centre
         closest, t = 1e9, 0.0
@@ -179,36 +181,79 @@ class StallDiagnostic(unittest.TestCase):
             self.assertEqual(a.step(t, p, stone, stone)[:2], b.step(t, p, stone, stone)[:2])
 
 
-class TurnControl(unittest.TestCase):
-    def spin_series(self, headings, err=math.radians(90)):
-        """Call _spin once per 0.1 s while the tag reports these headings."""
+class TurnPulses(unittest.TestCase):
+    def test_pulse_settle_measure_cycle(self):
         p = Planner(config())
-        out = []
-        for i, h in enumerate(headings):
-            t = i * .1
-            p.motion.append((t, 800, 600, h, 0, 0))
-            out.append(p._spin(err, t)[0])
-        return out
+        err = math.radians(40)
+        l, r = p._turn_step(err, pose(800, 600, 0, 0.0), 6)
+        self.assertGreater(l, 0)
+        self.assertEqual(l, -r)
+        length = p._pulse['end'] - p._pulse['start']
+        self.assertAlmostEqual(length, autonomy.pulse_seconds(40 * .7), places=3)   # 70% of 40 deg
+        self.assertEqual(p._turn_step(err, pose(800, 600, 0, length / 2), 6), (l, r))        # still pulsing
+        self.assertEqual(p._turn_step(err, pose(800, 600, 0, length + .1), 6), (0.0, 0.0))   # settling
+        # after the settle the camera shows the whole pulse: 28 deg done, 12 to go -> next pulse
+        l2, _ = p._turn_step(math.radians(12), pose(800, 600, 28, length + .3), 6)
+        self.assertGreater(l2, 0)
+        self.assertLess(p._pulse['end'] - p._pulse['start'], length)
 
-    def test_power_rises_while_stuck(self):
-        out = self.spin_series([0] * 8)
-        self.assertGreater(out[-1], out[0] + .2)
-
-    def test_power_cut_when_it_breaks_free(self):
-        out = self.spin_series([0] * 6 + [8, 18])       # starts turning at ~100 deg/s
-        self.assertLess(out[-1], out[5] * .8)
-
-    def test_align_stops_early_while_coasting(self):
+    def test_done_only_at_rest(self):
         p = Planner(config())
-        for i, h in enumerate((0, 5, 10)):              # turning at 50 deg/s
-            p.motion.append((i * .1, 800, 600, h, 0, 0))
-        self.assertIsNone(p._turn_to(pose(800, 600, 10, .2), math.radians(19)))
+        p._turn_step(math.radians(30), pose(800, 600, 0, 0.0), 6)
+        self.assertIsNotNone(p._turn_step(math.radians(2), pose(800, 600, 28, 0.05), 6))   # mid-pulse
+        self.assertIsNone(p._turn_step(math.radians(2), pose(800, 600, 28, 1.0), 6))       # measured, done
+
+    def test_gain_learns_robot_turns_further(self):
+        p = Planner(config())
+        p._turn_step(math.radians(40), pose(800, 600, 0, 0.0), 6)
+        planned = p._pulse['planned_deg']
+        p._turn_step(math.radians(40), pose(800, 600, 2 * planned, 1.0), 6)   # turned twice as far
+        self.assertGreater(p.pulse_gain, 1.2)
+
+    def test_three_stuck_pulses_flag_a_stall(self):
+        p = Planner(config())
+        t = 0.0
+        for _ in range(4):
+            p._turn_step(math.radians(60), pose(800, 600, 0, t), 6)
+            t += 1.0
+        self.assertEqual(p._stuck_pulses, 3)
+        self.assertEqual(p._stalled(t, pose(800, 600, 0, t), 0, 0), 'spin')
+        self.assertLessEqual(p._pulse['end'] - p._pulse['start'], p.o['pulse_max_s'] + 1e-9)
+
+    def test_pulse_cut_short_is_not_learned(self):
+        p = Planner(config())
+        p._turn_step(math.radians(60), pose(800, 600, 0, 0.0), 6)
+        p.state = 'GRIP'                                  # a state that does not turn
+        p.step(0.05, pose(800, 600, 0, 0.05), [], [])
+        self.assertIsNone(p._pulse)
+        self.assertEqual(p.pulse_gain, 1.0)
 
     def test_goal_behind_does_not_flip_turn_direction(self):
         p = Planner(config())
-        p._was_spinning, p._spin_dir, p.turn_t = True, 1.0, 0.0
+        p._was_spinning, p._spin_dir = True, 1.0
         l, r = p._drive_to(pose(800, 600, 0, .1), 800, 600, 400, 610, .3)   # err just past -180
         self.assertGreater(l, 0)
+
+    def test_prediction_moves_pose_by_the_delay(self):
+        p = Planner(config())
+        for i in range(6):                                # 500 mm/s along +x, 30 fps
+            t = i / 30
+            p.motion.append((t, 800 + 500 * t, 600, 0, .3, .3))
+        now = 6 / 30
+        ahead = p._predict(pose(800 + 500 * now, 600, 0, now))
+        self.assertAlmostEqual(ahead.x - (800 + 500 * now), 500 * p.o['camera_delay_s'], delta=2)
+        still = Planner(config())
+        still.motion = [(i / 30, 800, 600, 0, 0, 0) for i in range(6)]
+        self.assertEqual(still._predict(pose(800, 600, 0, now)).x, 800)
+
+    def test_backoff_stops_after_distance(self):
+        p = Planner(config())
+        p.o['predict_pose'] = False
+        p._go('BACKOFF', 0.0)
+        self.assertLess(p.step(0.0, pose(800, 600, 0, 0.0), [], [])[0], 0)
+        self.assertLess(p.step(0.2, pose(750, 600, 0, 0.2), [], [])[0], 0)
+        p.step(0.3, pose(800 - p.o['backoff_mm'] - 1, 600, 0, 0.3), [], [])
+        self.assertEqual(p.state, 'SEARCH')
 
     def test_goal_inside_grip_circle_backs_out(self):
         p = Planner(config())
@@ -219,8 +264,8 @@ class TurnControl(unittest.TestCase):
 
     def test_fixed_power_turns_still_available(self):
         cfg = config()
-        cfg['autonomy'] = {'turn_rate_control': False}
-        self.assertEqual(Planner(cfg)._spin(math.radians(90), 0)[0], .35)
+        cfg['autonomy'] = {'turn_mode': 'fixed'}
+        self.assertEqual(Planner(cfg)._turn_step(math.radians(90), pose(800, 600, 0), 6)[0], .35)
 
 
 class FieldPhysics(unittest.TestCase):
@@ -241,15 +286,32 @@ class FieldPhysics(unittest.TestCase):
 
     def test_field_min_duty_speed(self):
         import sim
-        rb = self.drive(.3, .3, 1.0, sim.FIELD_PARAMS)
+        rb = self.drive(.3, .3, 1.0, sim.FIELD_PARAMS)             # charged: ~530 mm/s
+        self.assertTrue(480 < rb.x - 1000 < 580)
+        rb = self.drive(.3, .3, 1.0, sim.LOW_BATTERY_PARAMS)       # flat battery: ~190 mm/s
         self.assertTrue(170 < rb.x - 1000 < 220)
 
     def test_field_spin_stalls_below_breakaway(self):
         import sim
-        rb = self.drive(.1, -.1, 1.0, sim.FIELD_PARAMS)
+        rb = self.drive(.1, -.1, 1.0, sim.LOW_BATTERY_PARAMS)
         self.assertEqual(rb.h, 0.0)
-        rb = self.drive(.6, -.6, 1.0, sim.FIELD_PARAMS)
+        rb = self.drive(.6, -.6, 1.0, sim.LOW_BATTERY_PARAMS)
         self.assertGreater(abs(rb.h), .5)
+
+    def test_field_pulse_turns_like_the_robot(self):
+        import sim
+        turned = []
+        for seed in range(30):
+            rb = sim.SimRobot(config(), [], 1000, 600, 0, params=sim.FIELD_PARAMS, seed=seed)
+            rb.command('start', 0)
+            t = 0.0
+            while t < .6:
+                c = .5 if t < .15 else 0.0
+                rb.command('drive', t, l=c, r=-c)
+                t += .01
+                rb.update(t)
+            turned.append(math.degrees(rb.h))
+        self.assertAlmostEqual(sorted(turned)[15], 20, delta=5)    # field: ~21 deg for 0.15 s
 
     def test_field_wall_and_tag_edge(self):
         import sim
