@@ -314,6 +314,12 @@ See [REVIEW_AND_PLAN.md](REVIEW_AND_PLAN.md) for PDF rules, design decisions,
 physical-lighting improvements, remaining robot work, and field acceptance tests.
 ## Autonomy (autonomy.py)
 
+Automatic wall recovery now uses a live AprilTag from the full camera picture,
+including just outside the calibrated field. It stops, makes a short inward
+movement, then checks the camera again. Missing tags and blocked escapes stop
+the wheels. See [WALL_RECOVERY.md](WALL_RECOVERY.md) for operation, tuning and
+limits. Add `--show-full-frame` to inspect the tag outside the calibrated view.
+
 The latest fix prevents forward steering from reversing one wheel close to the
 stage point. It preserves the locked stone while that stone is under the robot,
 advances to approach when the jaws are already near it, and reports why the planner

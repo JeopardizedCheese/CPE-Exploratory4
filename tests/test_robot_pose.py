@@ -26,6 +26,20 @@ def scene(cx, cy, rotate_cw_quarters=0, side_px=50, tag_id=3):
 
 
 class PoseTests(unittest.TestCase):
+    def test_visible_tag_outside_calibrated_rectangle_is_not_discarded(self):
+        cfg = config()
+        # Camera includes a 100px border around the calibrated 880x560mm field.
+        cfg['arena'].update(size_mm=[880, 560], corners_px=[[100, 100], [540, 100], [540, 380], [100, 380]])
+        est = RobotPoseEstimator(cfg)
+        for x, y, world_x, world_y in [(50, 240, -100, 280), (590, 240, 980, 280),
+                                      (320, 50, 440, -100), (320, 430, 440, 660)]:
+            with self.subTest(x=x, y=y):
+                p = est.detect(scene(x, y), 1.25)
+                self.assertIsNotNone(p, est.last_reason)
+                self.assertAlmostEqual(p.x, world_x, delta=4)
+                self.assertAlmostEqual(p.y, world_y, delta=4)
+                self.assertEqual(p.t, 1.25)
+
     def test_position_and_heading_up(self):
         est = RobotPoseEstimator(config())
         pose = est.detect(scene(300, 200))

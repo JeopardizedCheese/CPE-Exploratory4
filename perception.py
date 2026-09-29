@@ -1,7 +1,7 @@
 """One camera frame -> everything the planner needs, in arena millimetres.
 
     snap = Perception(cfg, background).step(raw_frame, t)
-    snap.pose          robot pose (robot_pose.Pose) or None; may be up to hold_s old
+    snap.pose          robot pose from this frame (robot_pose.Pose), or None
     snap.targets       pickable stones: [{'color', 'x', 'y', 'confidence', 'approach_deg'?}]
     snap.observations  every detection:  [{'color', 'x', 'y'}]  (color 0 = unknown)
     snap.robot_polygon robot outline that was masked out this frame (mm) or None
@@ -9,7 +9,9 @@
 Robot masking: when the tag is found, the robot's footprint (robot_tag.footprint_mm
 plus footprint_margin_mm) is blanked before detection, so the robot body, its roof
 and the stone in its gripper produce no blobs. If the tag is missed for a frame, the
-last pose keeps masking for up to hold_s seconds.
+last pose keeps masking for up to hold_s seconds, but is never returned for driving.
+Tags are detected in the full raw image; a tag outside the calibrated rectangle
+can still provide a live pose for wall recovery.
 
 Stone parallax: vision measures on the floor plane, but a stone's visible surface is
 about stone_height_mm above it, so it appears pushed away from the point under the
@@ -80,7 +82,7 @@ class Perception:
                 if o.approach_deg is not None:
                     target['approach_deg'] = o.approach_deg
                 targets.append(target)
-        return Snapshot(t, frame, status, held, targets, seen, polygon, observations)
+        return Snapshot(t, frame, status, pose, targets, seen, polygon, observations)
 
 
 def draw_robot(frame, snap, per_px):
