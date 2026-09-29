@@ -63,9 +63,10 @@ individually or detect hidden camera buffering automatically.
 
 - Firmware command `duty`: true signed PWM fraction, without the 71% minimum or
   hidden wheel gains. `l=0.10` becomes about 26/255, within 8-bit rounding.
-- Ramp limits applied to actual duty: 0.6/second rising and 1.2/second falling.
-  A zero command, STOP, invalid drive, lost Wi-Fi or watchdog expiry removes drive
-  immediately. Direction reversal reaches zero before changing sign.
+- Ramp limit applied to actual duty: 0.6/second rising. Falling is immediate, as
+  with legacy `drive`. A zero command, STOP, invalid drive, lost Wi-Fi or watchdog
+  expiry removes drive immediately. A direction reversal drops to zero at once and
+  changes sign on the next firmware update.
 - Status reports `direct_pwm:1`, `mode`, `pwm_l`, `pwm_r`, and controller session.
 - `motion_control.py`: a bounded power measurement, a relative heading turn,
   or a forward speed trial specified in mm/s. It waits for the **g** key before

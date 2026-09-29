@@ -236,8 +236,8 @@ void loop() {
     cmdL = cmdR = 0;
   }
   if (directDuty) {
-    outL = motion::rampDuty(outL, cmdL, dt, DUTY_RAMP_UP_PER_SEC, DUTY_RAMP_DOWN_PER_SEC);
-    outR = motion::rampDuty(outR, cmdR, dt, DUTY_RAMP_UP_PER_SEC, DUTY_RAMP_DOWN_PER_SEC);
+    outL = motion::rampDuty(outL, cmdL, dt, DUTY_RAMP_UP_PER_SEC);
+    outR = motion::rampDuty(outR, cmdR, dt, DUTY_RAMP_UP_PER_SEC);
   } else {
     outL = ramp(outL, cmdL, dt);
     outR = ramp(outR, cmdR, dt);

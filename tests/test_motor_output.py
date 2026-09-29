@@ -24,20 +24,18 @@ int main() {
   assert(motion::dutyToPwm(std::numeric_limits<float>::quiet_NaN()) == 0);
   float out = 0;
   for (int k=0; k<20; ++k) {
-    float next = motion::rampDuty(out, .5f, .01f, .6f, 1.2f);
+    float next = motion::rampDuty(out, .5f, .01f, .6f);
     assert(next >= out && next-out <= .00601f);
     out = next;
   }
   assert(out < .121f); // no 71% jump after start
-  assert(motion::rampDuty(.7f, 0, .01f, .6f, 1.2f) == 0);
-  assert(motion::rampDuty(0, .8f, 2.0f, .6f, 1.2f) < .031f);
-  out = .1f;
-  while (out > 0) {
-    float next = motion::rampDuty(out, -.5f, .01f, .6f, 1.2f);
-    assert(next >= 0); // reversal reaches zero first
-    out = next;
-  }
-  assert(motion::rampDuty(out, -.5f, .01f, .6f, 1.2f) < 0);
+  assert(motion::rampDuty(.7f, 0, .01f, .6f) == 0);
+  assert(motion::rampDuty(0, .8f, 2.0f, .6f) < .031f);
+  assert(motion::rampDuty(.4f, .1f, .01f, .6f) == .1f);    // slowing down is immediate
+  assert(motion::rampDuty(-.4f, -.1f, .01f, .6f) == -.1f);
+  out = motion::rampDuty(.4f, -.5f, .01f, .6f);
+  assert(out == 0); // reversal: zero on this update
+  assert(motion::rampDuty(out, -.5f, .01f, .6f) < 0);   // reverse on the next
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

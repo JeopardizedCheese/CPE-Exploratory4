@@ -19,8 +19,7 @@
 // New "duty" packets bypass MIN_DUTY and L/R_GAIN. Old "drive" packets retain
 // their mapping so the old autonomy pulse calibration is not silently changed.
 // Duty is motor power, NOT measured wheel speed or a regulated voltage.
-#define DUTY_RAMP_UP_PER_SEC 0.6f
-#define DUTY_RAMP_DOWN_PER_SEC 1.2f
+#define DUTY_RAMP_UP_PER_SEC 0.6f   // speed-up limit; slow-down and reversal to zero are instant
 
 // ---------- Gripper servo (SG90) ----------
 #define SERVO_PIN 19             // IN-ENG board servo header
