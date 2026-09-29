@@ -16,6 +16,12 @@
 #define MIN_DUTY 0.71f       // ~181/255: below 180 the motors stall (measured). Any non-zero command starts here
 #define RAMP_PER_SEC 3.0f    // speed-up limit (full scale per second); slow-down is instant
 
+// New "duty" packets bypass MIN_DUTY and L/R_GAIN. Old "drive" packets retain
+// their mapping so the old autonomy pulse calibration is not silently changed.
+// Duty is motor power, NOT measured wheel speed or a regulated voltage.
+#define DUTY_RAMP_UP_PER_SEC 0.6f
+#define DUTY_RAMP_DOWN_PER_SEC 1.2f
+
 // ---------- Gripper servo (SG90) ----------
 #define SERVO_PIN 19             // IN-ENG board servo header
 #define SERVO_US_MIN 500         // pulse width at 0 deg   (same as course example 03)

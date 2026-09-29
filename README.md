@@ -1,5 +1,30 @@
 # Gemstone sorting: overhead perception and robot link
 
+## Camera-guided motion control
+
+The legacy wheel path maps every nonzero command to at least 71% PWM. For
+measured power, relative heading turns or ground speed, see
+[MOTION_CONTROL.md](MOTION_CONTROL.md) and `motion_control.py`. The new `duty`
+command uses the supplied AprilTag overhead camera to measure turns and speed;
+it requires the accompanying ESP32 firmware and a clear test area. It does not
+claim a 1-degree physical accuracy without field measurements. Existing `drive`
+packets retain the previous mapping, so the autonomy turn calibration remains
+unchanged until the separate motion profile is checked on the robot.
+
+```bash
+python motion_control.py --preview --camera 1 --turn-deg 15
+python motion_control.py <ESP_IP> --camera 1 --test-duty 0.20 --duration 2
+python motion_control.py <ESP_IP> --camera 1 --turn-deg 15 --max-duty 0.40
+python motion_control.py <ESP_IP> --camera 1 --speed-mm-s 100 --duration 5 --max-duty 0.40
+```
+
+The operator presses `g` to start a live trial. Firmware capability/session,
+camera pose, measured limits and room from the arena edge are checked before
+nonzero PWM is sent. Stale/lost feedback, stalls, timeouts and measured
+overspeed stop the trial. The tool writes a run trace and summary to
+`runs/motion/`. Flash and physically check the sketch before a live trial;
+read the setup and calibration guide first.
+
 **Color-first update:** start with [COLOR_FIRST.md](COLOR_FIRST.md). The
 root `calib.json` is the calibration for the 2100 x 1200 mm arena and every tool
 reads it by default. `color_preview.py` provides camera/image/video diagnostics

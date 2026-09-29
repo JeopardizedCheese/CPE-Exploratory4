@@ -13,6 +13,7 @@
 #include <esp_system.h>
 #include "secrets.h"   // copy secrets.example.h -> secrets.h
 #include "config.h"
+#include "motor_output.h"
 
 #if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3
 #error "Use ESP32 Arduino core 3.x (Boards Manager: esp32 by Espressif >= 3.0)"
@@ -30,7 +31,9 @@ unsigned long lastRx = 0, lastDrive = 0, lastStatus = 0, lastLoop = 0;
 IPAddress peerIp;
 uint16_t peerPort = 0;
 
-float cmdL = 0, cmdR = 0, outL = 0, outR = 0;   // -1..1: commanded and ramped wheel speeds
+float cmdL = 0, cmdR = 0, outL = 0, outR = 0;   // -1..1: commands/outputs, NOT measured speeds
+bool directDuty = false;
+int pwmL = 0, pwmR = 0;  // actual signed PWM written to the library, before pin inversion
 float servoPos = SERVO_START_DEG, servoTarget = SERVO_START_DEG;
 bool servoActive = false;                       // no pulses until the first grip/servo command
 
@@ -46,7 +49,9 @@ int toSpeed(float v) {
 }
 
 void applyMotors() {
-  inengmotor.drive(toSpeed(outL * L_GAIN), toSpeed(outR * R_GAIN));
+  pwmL = directDuty ? motion::dutyToPwm(outL) : toSpeed(outL * L_GAIN);
+  pwmR = directDuty ? motion::dutyToPwm(outR) : toSpeed(outR * R_GAIN);
+  inengmotor.drive(pwmL, pwmR);
 }
 
 void motorsOff() {
@@ -115,7 +120,7 @@ void handlePacket(char *buf, unsigned long now) {
   JsonDocument doc;
   if (deserializeJson(doc, buf) || doc["v"] != 3 || !doc["s"].is<const char *>() ||
       !doc["q"].is<uint32_t>() || !doc["c"].is<const char *>()) {
-    cmdL = cmdR = 0;
+    motorsOff();
     return;
   }
   String session = doc["s"].as<String>();
@@ -134,12 +139,15 @@ void handlePacket(char *buf, unsigned long now) {
   peerPort = udp.remotePort();
 
   const char *c = doc["c"];
-  if (!strcmp(c, "drive")) {
+  if (!strcmp(c, "drive") || !strcmp(c, "duty")) {
     float l = doc["l"] | NAN, r = doc["r"] | NAN;
     if (state != RUNNING || !isfinite(l) || !isfinite(r) || fabsf(l) > 1 || fabsf(r) > 1) {
-      cmdL = cmdR = 0;
+      motorsOff();
       return;
     }
+    bool requestedDuty = !strcmp(c, "duty");
+    if (requestedDuty != directDuty) motorsOff();  // do not reinterpret a moving output
+    directDuty = requestedDuty;
     cmdL = l; cmdR = r; lastDrive = now;
   } else if (!strcmp(c, "start")) {
     if (state == IDLE) enter(RUNNING, "start");
@@ -159,7 +167,7 @@ void pollUdp(unsigned long now) {
   for (int k = 0; k < 8; k++) {                 // drain a few packets per loop
     int len = udp.parsePacket();
     if (!len) return;
-    if (len >= 512) { while (udp.available()) udp.read(); cmdL = cmdR = 0; continue; }
+    if (len >= 512) { while (udp.available()) udp.read(); motorsOff(); continue; }
     char buf[512];
     int n = udp.read(buf, sizeof(buf) - 1);
     if (n <= 0) continue;
@@ -176,11 +184,16 @@ void sendStatus(unsigned long now) {
   doc["why"] = reason;
   doc["l"] = outL;
   doc["r"] = outR;
+  doc["direct_pwm"] = 1;  // feature version; old firmware has no such field
+  doc["mode"] = directDuty ? "duty" : "legacy";
+  doc["pwm_l"] = pwmL;
+  doc["pwm_r"] = pwmR;
+  doc["session"] = activeSession;
   doc["rx_age_ms"] = now - lastRx;
   doc["rssi"] = WiFi.RSSI();
   JsonArray s = doc["servo"].to<JsonArray>();   // kept as a list: the PC side reads servo[0]
   s.add(roundf(servoPos));
-  char out[256];
+  char out[512];
   size_t n = serializeJson(doc, out, sizeof(out));
   udp.beginPacket(peerIp, peerPort);
   udp.write((const uint8_t *)out, n);
@@ -222,8 +235,13 @@ void loop() {
   } else {
     cmdL = cmdR = 0;
   }
-  outL = ramp(outL, cmdL, dt);
-  outR = ramp(outR, cmdR, dt);
+  if (directDuty) {
+    outL = motion::rampDuty(outL, cmdL, dt, DUTY_RAMP_UP_PER_SEC, DUTY_RAMP_DOWN_PER_SEC);
+    outR = motion::rampDuty(outR, cmdR, dt, DUTY_RAMP_UP_PER_SEC, DUTY_RAMP_DOWN_PER_SEC);
+  } else {
+    outL = ramp(outL, cmdL, dt);
+    outR = ramp(outR, cmdR, dt);
+  }
   applyMotors();
   updateServo(dt);
   sendStatus(now);
