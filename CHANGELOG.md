@@ -1,5 +1,19 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01: faster vision, same results
+
+**EN**
+- `vision.py`: the per-pixel background difference takes the largest of the three colour channels with `np.maximum` instead of `.max(axis=2)` (5.9 → 0.3 ms per frame).
+- `find_zones.py`: the colour median of each zone is taken over the zone's bounding box instead of a full-image mask. The reference guard runs this on every frame.
+- Perception per frame on the development laptop: 23.5 → 14.0 ms. Replaying four recorded runs (0628, 0917, 0920, 0922) gives identical output frame by frame: every observation, target, diagnostic and foreground pixel. The field laptop took ~44 ms per frame (~20 fps), so decisions should now be based on fresher frames; there is no change in behaviour.
+- Tests: 163 pass.
+
+**TH**
+- `vision.py`: การหาความต่างจากภาพพื้นหลังใช้ `np.maximum` เลือกค่ามากสุดของสามช่องสี แทน `.max(axis=2)` (5.9 → 0.3 ms ต่อเฟรม)
+- `find_zones.py`: หาค่ามัธยฐานสีของแต่ละโซนเฉพาะในกรอบรอบวงกลม แทนการสร้าง mask ทั้งภาพ (reference guard เรียกฟังก์ชันนี้ทุกเฟรม)
+- เวลาประมวลผลภาพต่อเฟรมบนเครื่องพัฒนา: 23.5 → 14.0 ms ผลลัพธ์เหมือนเดิมทุกเฟรมเมื่อเล่นวิดีโอที่บันทึกไว้ 4 รอบ (0628, 0917, 0920, 0922): ทุก observation, target, diagnostic และพิกเซล foreground เครื่องที่ใช้ในสนามเคยใช้ ~44 ms ต่อเฟรม (~20 fps) ตอนนี้การตัดสินใจจึงใช้ภาพที่ใหม่กว่า พฤติกรรมไม่เปลี่ยน
+- เทสต์: ผ่าน 163
+
 ## 2026-09-30: wall keep-out and wall recovery (PR #2 + fixes)
 
 **EN**

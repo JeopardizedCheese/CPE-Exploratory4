@@ -45,9 +45,14 @@ def find_zones(background, cfg, min_saturation=None, expected=6, classify_colors
         circularity = 4 * np.pi * area_px / max(1.0, perimeter * perimeter)
         if fill < .7 or circularity < .7:
             continue
-        inside = np.zeros(mask.shape, np.uint8)
-        cv2.circle(inside, (int(cx), int(cy)), max(1, int(r * .7)), 255, -1)
-        median = np.median(hsv[inside > 0], axis=0)
+        # Median over the inner circle, drawn in its bounding box only (same pixels as a
+        # full-image mask; the reference guard calls this every frame).
+        radius = max(1, int(r * .7))
+        x0, y0 = max(0, int(cx) - radius), max(0, int(cy) - radius)
+        box = hsv[y0:int(cy) + radius + 1, x0:int(cx) + radius + 1]
+        inside = np.zeros(box.shape[:2], np.uint8)
+        cv2.circle(inside, (int(cx) - x0, int(cy) - y0), radius, 255, -1)
+        median = np.median(box[inside > 0], axis=0)
         zones.append({'center_px': (float(cx), float(cy)), 'radius_px': float(r),
                       'hsv': [int(v) for v in median],
                       'color': classify(median, cfg) if classify_colors else 0})

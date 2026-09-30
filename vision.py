@@ -117,7 +117,10 @@ class Detector:
             # Global brightness offset: median of a 1-in-16 pixel subsample is plenty.
             sample = delta[::4, ::4][valid[::4, ::4] > 0]
             offset = np.median(sample, axis=0) if len(sample) else np.zeros(3)
-            difference = np.abs(delta - np.round(offset).astype(np.int16)).max(axis=2)
+            difference = np.abs(delta - np.round(offset).astype(np.int16))
+            # Largest channel difference. Same as .max(axis=2), but ~15x faster (5.9 -> 0.3 ms):
+            # numpy reduces a length-3 last axis very slowly.
+            difference = np.maximum(np.maximum(difference[..., 0], difference[..., 1]), difference[..., 2])
             foreground = np.uint8(difference > self.options.get('background_delta', 30)) * 255
             foreground &= valid
             changed = np.count_nonzero(foreground) / max(1, np.count_nonzero(valid))
