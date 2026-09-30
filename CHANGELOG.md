@@ -1,5 +1,21 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01: mini practice field, new arm servo
+
+**EN**
+- Firmware `config.h` for the remounted arm: servo pin 33, pulse widths swapped (2500 us at 0 deg, 500 us at 180 deg), `SERVO_MAX_DEG` 125, `GRIP_CLOSE_DEG` 100. Needs a reflash. `autonomy.grip_close` must be 100 too.
+- New `minifield/calib_minifield.json` for the ~1650 x 1100 mm practice field with only a red and a green zone; steps in [minifield/README.md](minifield/README.md). Jaw tips 175 mm ahead of the tag (`footprint_mm.front`), grip offset estimated at 140 mm (measure with a ruler), `approach_max_side_mm` 25, `min_duty` 0.65. Camera height and floor point are `null` until measured (the camera is not centred); the run refuses to start while they are null.
+- `zone_colors` (top level, default all six): the scoring zones a field has. `find_zones.py`, `calibrate_arena.py` and the start check (`--check-config`) use it instead of a fixed six. HSV ranges are required only for zone colours and aliased colours.
+- `autonomy.color_alias` (default empty): a colour with no zone of its own is delivered to another colour's zone, e.g. `{"1": 3}` = violet to red. Colours with neither are never picked, only avoided (as before). Off per run: `--set color_alias={}`. The simulator scores an aliased delivery as wrong, as the competition would.
+- Tests: 176 pass (13 new in `tests/test_field_zones.py`).
+
+**TH**
+- เฟิร์มแวร์ `config.h` สำหรับแขนที่ติดตั้งใหม่: servo ขา 33, สลับความกว้างพัลส์ (2500 us ที่ 0 องศา, 500 us ที่ 180 องศา), `SERVO_MAX_DEG` 125, `GRIP_CLOSE_DEG` 100 ต้องแฟลชใหม่ และ `autonomy.grip_close` ต้องเป็น 100 ด้วย
+- เพิ่ม `minifield/calib_minifield.json` สำหรับสนามซ้อมขนาดประมาณ 1650 x 1100 mm ที่มีแค่โซนแดงและโซนเขียว ขั้นตอนอยู่ใน [minifield/README.md](minifield/README.md) ปลายปากคีบอยู่หน้าแท็ก 175 mm (`footprint_mm.front`), grip offset ประมาณ 140 mm (ควรวัดด้วยไม้บรรทัด), `approach_max_side_mm` 25, `min_duty` 0.65 ความสูงกล้องและจุดบนพื้นใต้เลนส์เป็น `null` จนกว่าจะวัด (กล้องไม่ได้อยู่กลางสนาม) ถ้ายังเป็น null โปรแกรมจะไม่ยอมเริ่ม
+- `zone_colors` (ระดับบนสุด ค่าเริ่มต้นครบหกสี): สีของโซนที่มีในสนาม `find_zones.py`, `calibrate_arena.py` และการตรวจก่อนเริ่ม (`--check-config`) ใช้ค่านี้แทนการบังคับหกโซน ต้องมีช่วง HSV เฉพาะสีที่มีโซนและสีที่ alias
+- `autonomy.color_alias` (ค่าเริ่มต้นว่าง): สีที่ไม่มีโซนของตัวเองจะถูกส่งไปโซนของสีอื่น เช่น `{"1": 3}` = ม่วงไปโซนแดง สีที่ไม่มีทั้งโซนและ alias จะไม่ถูกหยิบ แค่หลบ (เหมือนเดิม) ปิดเฉพาะรอบได้ด้วย `--set color_alias={}` ตัวจำลองนับการส่งแบบ alias ว่าผิดโซน เหมือนกติกาการแข่ง
+- เทสต์: ผ่าน 176 (ใหม่ 13 ข้อใน `tests/test_field_zones.py`)
+
 ## 2026-10-01: faster vision, same results
 
 **EN**
