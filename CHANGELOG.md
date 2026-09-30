@@ -1,5 +1,20 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-09-30: stop before gripping and recover beside piles
+
+**EN**
+- Use `CAPTURE` to stop and remeasure a stone already between the jaws before closing. Near-contact approach uses bounded straight pulses, waits for the camera to show rest, and retreats before turning when a stone is too close and off-center.
+- Detect local jaw stones separately from navigation masks; project the raised robot body into the image so roof/finger blobs do not block wall recovery. Allow an escape that moves away from an object already inside collision padding.
+- Set close to 70 degrees throughout firmware, planner, simulator and firmware check. A reported close-angle mismatch stops in `GRIP_BLOCKED`.
+- Supply provisional grip offset `[197, -4]` mm and front footprint 235 mm, explicitly uncalibrated. The stationary video supports the offset estimate; confirm it on the robot. The reference movement later in the video still requires field recalibration.
+- Add regression coverage and a small recorded-position fixture. See [PICKUP_RECOVERY.md](PICKUP_RECOVERY.md) for evidence, setup and validation limits.
+
+**TH**
+- เพิ่ม `CAPTURE` ให้หยุดและวัดตำแหน่งหินอีกครั้งก่อนคีบ เมื่อเข้าใกล้หินจะขยับสั้น ๆ แล้วรอกล้องยืนยันว่าหยุด หากหินอยู่ชิดปากคีบแต่เยื้องข้าง จะตรวจทางถอยก่อนหมุนจัดแนวใหม่
+- แยกการตรวจหินในปากคีบจากพื้นที่บังตัวหุ่น และชดเชยภาพตัวหุ่นที่สูงจากพื้น เพื่อไม่ให้หลังคาหรือปากคีบกลายเป็นสิ่งกีดขวางปลอม อนุญาตให้ถอยออกห่างจากหินที่แตะขอบระยะเผื่อได้
+- ตั้งค่าปิดปากคีบเป็น 70 องศาให้ตรงกัน หากเฟิร์มแวร์รายงานมุมไม่ตรงจะหยุดที่ `GRIP_BLOCKED`
+- ค่า grip offset `[197, -4]` มม. และขอบหน้าหุ่น 235 มม. เป็นค่าประมาณที่ต้องวัดยืนยัน กล้องหรือสนามที่ขยับยังต้อง calibrate ใหม่ รายละเอียดอยู่ใน `PICKUP_RECOVERY.md`
+
 ## 2026-09-30: wall keep-out and wall recovery (PR #2 + fixes)
 
 **EN**

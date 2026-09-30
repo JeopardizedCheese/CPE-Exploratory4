@@ -7,8 +7,9 @@
   "autonomy": {
     "cruise": 0.3,
     "grip_open": 0,
-    "grip_close": 90,
-    "approach_max_side_mm": 11
+    "grip_close": 70,
+    "approach_max_side_mm": 11,
+    "min_duty": 0.65
   },
   "arena": {
     "size_mm": [
@@ -1015,20 +1016,21 @@
       600
     ],
     "grip_offset_mm": [
-      140,
-      0
+      197,
+      -4
     ],
     "axle_offset_mm": -40,
     "size_tolerance": 0.25,
     "heading_offset_deg": 0,
     "footprint_mm": {
-      "front": 135,
+      "front": 235,
       "back": 90,
       "left": 75,
       "right": 75
     },
-    "grip_calibrated": true,
-    "footprint_margin_mm": 0
+    "grip_calibrated": false,
+    "footprint_margin_mm": 0,
+    "grip_measurement_note": "Provisional estimate from stationary held sky-blue stone in run 20260930-062142-447604 frames 1230-1280 before reference shift: about [197,-4] mm. Confirm with calibrate_grip.py --color 5 --write at two headings. Front footprint 235 mm conservatively includes open fingers; measure on the robot."
   },
   "_setup_notes": "Measured field 2100 x 1200 mm and camera height 1815 mm. Camera floor point assumes X=long side, origin=top left. Tag size/height, gripper/footprint values are copied starting values and still need physical verification. Recalibrate corners/background and all six stone colors before operation.",
   "zones_margin_mm": {

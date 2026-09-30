@@ -58,6 +58,8 @@ class ProgressTests(unittest.TestCase):
         p.step(2.1, pose(600, 600, 0, 2.1, grip=270), [], [], {'state': 'RUNNING', 'servo': [0]})
         self.assertEqual(p.state, 'APPROACH')
         l, r, _ = p.step(2.2, pose(600, 600, 0, 2.2, grip=270), [], [])
+        self.assertEqual((l, r), (0, 0))  # observe at rest before a bounded approach pulse
+        l, r, _ = p.step(2.5, pose(600, 600, 0, 2.5, grip=270), [], [])
         self.assertGreater(l, 0)
         self.assertGreater(r, 0)
 
@@ -78,9 +80,11 @@ class ProgressTests(unittest.TestCase):
         cfg = config()
         cfg['autonomy'] = {'creep': .05}
         p = Planner(cfg)
-        p.lock.update([target(800, 620)], 0)
+        p.lock.update([target(800, 610)], 0)  # already inside the jaw's lateral capture corridor
         p.state, p.heading = 'APPROACH', 0.0
         l, r, _ = p.step(.1, pose(600, 600, 0, .1), [], [])
+        self.assertEqual((l, r), (0, 0))
+        l, r, _ = p.step(.5, pose(600, 600, 0, .5), [], [])
         self.assertGreater(l, 0)
         self.assertGreater(r, 0)
 

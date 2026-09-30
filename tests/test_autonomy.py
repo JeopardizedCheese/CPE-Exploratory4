@@ -107,6 +107,9 @@ class JawStone(unittest.TestCase):
         robot = pose(1000, 600, 0)                                 # grip point at (1120, 600)
         in_jaws = {'color': 2, 'x': 1123.0, 'y': 604.0}           # not a target: never isolated
         _, _, events = p.step(0.1, robot, [far], [in_jaws, far])
+        self.assertEqual(p.state, 'CAPTURE')
+        self.assertEqual(events, [])
+        _, _, events = p.step(.5, pose(1000, 600, 0, .5), [far], [in_jaws, far])
         self.assertEqual(p.state, 'GRIP')
         self.assertIn(('grip', {'p': 'close'}), events)
         self.assertEqual(p.carrying, 2)

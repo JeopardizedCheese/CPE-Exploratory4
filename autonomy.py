@@ -42,9 +42,11 @@ from pathlib import Path
 from robot_pose import Pose
 from target_lock import TargetLock
 from wall_guard import WallGuard, DEFAULTS as WALL_DEFAULTS
+from pickup import Pickup, jaw_error, DEFAULTS as PICKUP_DEFAULTS
 
 DEFAULTS = {
     **WALL_DEFAULTS,
+    **PICKUP_DEFAULTS,
     'cruise': 0.45, 'creep': 0.18, 'turn': 0.35, 'min_turn': 0.16,
     'kp_turn': 1.0,                 # drive-command per radian of heading error (fixed-power turns)
     'max_forward_steer_ratio': 0.5, # below 1: neither wheel reverses in the forward branch; with
@@ -59,9 +61,9 @@ DEFAULTS = {
     # changes; at 500 mm/s it is 100 mm. false = plan from the raw (old) pose.
     'camera_delay_s': 0.2, 'predict_pose': True,
     'pose_timeout_s': 0.25, 'servo_tol_deg': 3, 'servo_timeout_s': 2.0,
-    'timeouts_s': {'GOTO_STAGE': 15, 'ALIGN': 6, 'APPROACH': 8, 'SEARCH_IDLE': 2.5, 'PARK': 10},
+    'timeouts_s': {'GOTO_STAGE': 15, 'ALIGN': 6, 'APPROACH': 20, 'SEARCH_IDLE': 2.5, 'PARK': 10},
     'skip_s': 25, 'skip_mm': 40, 'pick_check_mm': 180, 'pile_avoid_mm': 170,
-    'grip_open': 0, 'grip_close': 40, 'grip_servo': 0,   # = GRIP_OPEN/CLOSE_DEG in config.h
+    'grip_open': 0, 'grip_close': 70, 'grip_servo': 0,   # = GRIP_OPEN/CLOSE_DEG in config.h
     'park_mm': None,                 # where to wait when nothing is pickable; default right side
     'stone_height_mm': 20,
     # Turning in place is done in pulses: turn for a short time sized to part of the remaining
@@ -130,6 +132,8 @@ class Planner:
                       for k, z in cfg.get('zones', {}).items()}
         w, h = cfg['arena']['size_mm']
         self.wall = WallGuard(cfg, self.o)
+        self.pickup = Pickup(self.o)
+        self._approach_cruise = False
         self.park = self.wall.clamp_tag_goal(*(self.o['park_mm'] or [w * 0.85, h * 0.5]))
         self._wall_resume_state = None
         self.lock = TargetLock(max_missing_s=1.0, match_mm=35)
@@ -160,6 +164,12 @@ class Planner:
     def _go(self, s, now, why=''):
         if s != self.state:
             self.events_log.append((round(now, 2), self.state, s, why))
+            if s in ('APPROACH', 'CAPTURE'):
+                self.pickup.pause(now)
+                self._pulse, self._was_spinning = None, False
+                self._approach_cruise = False
+            if s == 'CAPTURE':
+                self.wall.pause(now, 'wall_wait_grip')
         self.state, self.since = s, now
 
     def _elapsed(self, now):
@@ -189,13 +199,10 @@ class Planner:
     def _jaw_stone(self, pose, observations, now):
         """A known-colour stone already between the open jaws (any observation, not only
         targets: a stone in the jaws is never 'isolated')."""
-        h = math.radians(pose.heading_deg)
         for ob in observations:
             if not self._usable(ob, now):
                 continue
-            dx, dy = ob['x'] - pose.grip_x, ob['y'] - pose.grip_y
-            along, side = dx * math.cos(h) + dy * math.sin(h), -dx * math.sin(h) + dy * math.cos(h)
-            if abs(along) <= self.o['grip_tol_mm'] and abs(side) <= self.o['approach_max_side_mm']:
+            if self.pickup.contains(pose, ob):
                 return ob
         return None
 
@@ -395,23 +402,26 @@ class Planner:
 
     # ------------------------------------------------------------ main step
     def step(self, now, pose, targets, observations, status=None, *,
-             perception_status='ok', require_status=False):
+             perception_status='ok', require_status=False, jaw_observations=()):
         """Plan one frame; diagnostics explain both commands and stop conditions.
 
         Real runs require fresh firmware status and valid perception. Simulation
         callers may omit status; neither a lost tag nor invalid vision is bypassed.
         """
         before = self.state
+        self._jaw_observations = jaw_observations
         self.debug = {'state': before, 'reason': '', 'targets': len(targets),
                       'observations': len(observations), 'perception': perception_status,
                       'pose_age_s': None if pose is None else now-pose.t,
                       'firmware_state': status.get('state') if status else None}
         if perception_status != 'ok':
             self.wall.pause(now, 'wall_wait_valid_vision')
+            self.pickup.pause(now, restart=False)
             result = (0.0, 0.0, [])
             self.debug['reason'] = 'vision_' + perception_status
         elif require_status and not status:
             self.wall.pause(now, 'wall_wait_firmware')
+            self.pickup.pause(now, restart=False)
             result = (0.0, 0.0, [])
             self.debug['reason'] = 'no_fresh_firmware_status'
         else:
@@ -429,6 +439,8 @@ class Planner:
                           target=dict(self.lock.target) if self.lock.target else None,
                           stalled=self._stalled(now, pose, l, r))
         self.debug.update(self.wall.diagnostics(pose))
+        if self.pickup.until and self.state == 'APPROACH' and l == r and l != 0:
+            self.debug['pickup_command_until'] = self.pickup.until
         return result
 
     def _recover_wall(self, now, pose, observations):
@@ -443,6 +455,7 @@ class Planner:
             self._pulse, self._was_spinning = None, False
             self.motion.clear()
             self.backoff_from = None
+            self.pickup.pause(now)
         self.debug['reason'] = self.wall.reason
         # completed, or a retry after WALL_BLOCKED found the robot already safe (moved by hand)
         if self.wall.completed or command is None:
@@ -516,15 +529,59 @@ class Planner:
         ev = []
         if status and status.get('state') not in (None, 'RUNNING'):
             self.wall.pause(now, 'wall_wait_firmware')
+            self.pickup.pause(now, restart=False)
             self.debug['reason'] = 'firmware_' + str(status.get('state'))
             return 0.0, 0.0, ev
         if pose is None or not 0 <= now - pose.t <= min(self.o['pose_timeout_s'], self.wall.o['wall_pose_max_age_s']):
             self.wall.pause(now, 'wall_wait_fresh_tag')
+            self.pickup.pause(now, restart=False)
             self.debug['reason'] = 'tag_missing' if pose is None else 'pose_stale'
             return 0.0, 0.0, ev                          # no fresh pose: stand still
         if not all(math.isfinite(v) for v in (pose.x, pose.y, pose.heading_deg, pose.grip_x, pose.grip_y)):
             self.wall.pause(now, 'wall_invalid_pose')
+            self.pickup.pause(now, restart=False)
             self.debug['reason'] = 'pose_invalid'
+            return 0.0, 0.0, ev
+        self.pickup.observe(pose)
+        raw_pose = pose
+        if self.state == 'GRIP_BLOCKED':
+            self.debug['reason'] = 'gripper angle mismatch; check close setting and firmware'
+            return 0.0, 0.0, ev
+        # A reachable stone takes precedence over driving. Stop first: the camera
+        # and motor coast can otherwise carry it past the jaws during closure.
+        can_capture = self.state in ('SEARCH', 'PARK', 'GOTO_STAGE', 'ALIGN', 'APPROACH')
+        wall_capture = self.state in ('WALL_RECOVERY', 'WALL_BLOCKED') and self.carrying is None
+        if (can_capture or wall_capture) and self._servo_at(status, 'grip', self.o['grip_open']):
+            candidates = list(self._jaw_observations) + list(observations)
+            if self.lock.target is not None and can_capture:
+                candidates.append(self.lock.target)
+            jaw = self._jaw_stone(pose, candidates, now)
+            if jaw:
+                self.lock.target = dict(jaw)
+                self._go('CAPTURE', now, 'stone in jaws; stop and measure')
+                return 0.0, 0.0, ev
+        if self.state == 'CAPTURE':
+            if now-self.since > self.o['servo_timeout_s']+2:
+                self._skip_target(now, 'pickup did not settle')
+                self._go('BACKOFF', now, 'pickup did not settle')
+                return 0.0, 0.0, ev
+            if self.pickup.waiting(now, pose) is not None:
+                self.debug['reason'] = 'pickup_wait_until_stopped'
+                return 0.0, 0.0, ev
+            target = self.lock.target
+            # Re-measure a visible candidate after coasting; do not chase a stone
+            # outside the capture area using a stale prediction.
+            if target:
+                fresh = [ob for ob in list(self._jaw_observations)+list(observations) if ob['color'] == target['color']
+                         and math.hypot(ob['x']-target['x'], ob['y']-target['y']) < 50]
+                if fresh:
+                    target = min(fresh, key=lambda ob: math.hypot(ob['x']-target['x'], ob['y']-target['y']))
+                    self.lock.target = dict(target)
+            if target and self.pickup.contains(pose, target):
+                self._start_grip(target, now, ev, 'measured stone inside jaws')
+            else:
+                self.heading = math.radians(pose.heading_deg)
+                self._go('APPROACH', now, 'remeasure after coast')
             return 0.0, 0.0, ev
         # GRIP/RELEASE are stationary: finish the servo operation before moving a payload.
         if self.state not in ('GRIP', 'RELEASE'):
@@ -535,7 +592,7 @@ class Planner:
             xs = [o['x'] for o in observations]
             ys = [o['y'] for o in observations]
             self.pile_center = (sorted(xs)[len(xs) // 2], sorted(ys)[len(ys) // 2])
-        if self.o['predict_pose']:
+        if self.o['predict_pose'] and self.state not in ('ALIGN', 'APPROACH', 'GRIP'):
             pose = self._predict(pose)
         o, s = self.o, self.state
         usable = [t for t in targets if self._usable(t, now)]
@@ -562,13 +619,6 @@ class Planner:
             if math.hypot(self.park[0] - pose.x, self.park[1] - pose.y) < 60:
                 return 0.0, 0.0, ev
             return (*self._drive_to(pose, pose.x, pose.y, self.park[0], self.park[1], o['cruise']), ev)
-
-        if s in ('GOTO_STAGE', 'ALIGN') and self._servo_at(status, 'grip', o['grip_open']):
-            jaw = self._jaw_stone(pose, observations, now)
-            if jaw:
-                self.lock.target = dict(jaw)            # a Jaw stone beats the locked stone
-                self._start_grip(jaw, now, ev, f"jaw stone colour {jaw['color']}")
-                return 0.0, 0.0, ev
 
         if s == 'GOTO_STAGE':
             locked = self.lock.target
@@ -608,6 +658,10 @@ class Planner:
             if t is None:
                 self._go('SEARCH', now, f'target {self.lock.reason}')
                 return 0.0, 0.0, ev
+            along, side = jaw_error(raw_pose, t)
+            if math.hypot(along, side) < o['pickup_turn_clearance_mm']:
+                self._go('APPROACH', now, 'too close for a large alignment turn')
+                return 0.0, 0.0, ev
             cmd = self._turn_to(pose, self.heading)
             ready = self._servo_at(status, 'grip', o['grip_open'])
             if cmd is None and not ready:
@@ -627,44 +681,64 @@ class Planner:
             if t is None:
                 self._go('SEARCH', now, f'target {self.lock.reason}')
                 return 0.0, 0.0, ev
-            # Follow the approach line through the stone: along = distance still to go,
-            # side = how far the grip point is off that line (not relative to our heading,
-            # which swings the grip point whenever we steer).
-            ux, uy = math.cos(self.heading), math.sin(self.heading)
-            dx, dy = t['x'] - pose.grip_x, t['y'] - pose.grip_y
-            along, side = dx * ux + dy * uy, -dx * uy + dy * ux
-            self.side_avg = side if self.side_avg is None else 0.6 * self.side_avg + 0.4 * side
-            side = self.side_avg
+            along, side = jaw_error(raw_pose, t)
             self.debug.update(along_mm=along, side_mm=side)
-            if along <= o['grip_tol_mm']:
-                if abs(side) > o['approach_max_side_mm']:
-                    if self.retries < 1:                 # back up and line up once more
-                        self.retries += 1
-                    else:
-                        self._skip_target(now, 'missed sideways')
-                    self._go('BACKOFF', now, f'side error {side:.0f} mm')
-                    return 0.0, 0.0, ev
-                self._start_grip(t, now, ev)
-                return 0.0, 0.0, ev
             if self._elapsed(now) > o['timeouts_s']['APPROACH']:
                 self._skip_target(now, 'approach timeout')
                 self._go('BACKOFF', now, 'approach timeout')
                 return 0.0, 0.0, ev
-            wanted = self.heading + math.atan2(side, o.get('approach_lookahead_mm', 150))
-            err = wrap(wanted - heading)
-            self.debug['heading_error_deg'] = math.degrees(err)
-            if self._pulse is not None or abs(err) > math.radians(20):   # badly off: turn first
-                cmd = self._turn_step(err, pose, 20)
+            brake_at = self.pickup.braking_distance(raw_pose)
+            drive_err = math.atan2(side, max(40, along+self.offset[0]+self.axle))
+            steer = clamp(.5*drive_err, -o['creep']*.4, o['creep']*.4)
+            if self._approach_cruise:
+                if along > brake_at and abs(drive_err) < math.radians(20):
+                    self.debug['reason'] = 'approach_before_braking_distance'
+                    return o['creep']+steer, o['creep']-steer, ev
+                self._approach_cruise = False
+                self.pickup.pause(now)
+                self.debug['reason'] = 'pickup_brake_before_contact'
+                return 0.0, 0.0, ev
+            if self._pulse is not None:
+                err = math.atan2(side, max(40, along+self.offset[0]+self.axle))
+                cmd = self._turn_step(err, raw_pose, 2)
                 if cmd is not None:
-                    self.debug['reason'] = 'turn_to_approach'
+                    self.debug['reason'] = 'pickup_align_at_clearance'
+                    return *cmd, ev
+                self.pickup.pause(now)
+            wait = self.pickup.waiting(now, raw_pose)
+            if wait is not None:
+                self.debug['reason'] = 'pickup_pulse' if any(wait) else 'pickup_stop_and_measure'
+                return *wait, ev
+            if along < -o['grip_capture_back_mm']:
+                self._skip_target(now, 'stone passed behind capture area')
+                self._go('BACKOFF', now, 'stone passed behind capture area')
+                return 0.0, 0.0, ev
+            if abs(side) > o['approach_max_side_mm'] and along < o['pickup_turn_clearance_mm']:
+                path = [self.wall._translated(raw_pose, -d) for d in range(0, 81, 10)]
+                if not all(self.wall.safe_pose(q) for q in path) or not self.wall._path_clear(path, observations, None):
+                    self.debug['reason'] = 'pickup_no_room_to_realign'
+                    return 0.0, 0.0, ev
+                self.debug['reason'] = 'pickup_retreat_before_turn'
+                return *self.pickup.pulse(now, raw_pose, -1, 40), ev
+            reach = max(40, along+self.offset[0]+self.axle)
+            err = math.atan2(side, reach)
+            self.debug['heading_error_deg'] = math.degrees(err)
+            if along > brake_at and abs(err) < math.radians(20):
+                self._approach_cruise = True
+                self.debug['reason'] = 'approach_before_braking_distance'
+                return o['creep']+steer, o['creep']-steer, ev
+            if self._pulse is not None or abs(side) > o['approach_max_side_mm']:
+                cmd = self._turn_step(err, raw_pose, 2)
+                if cmd is not None:
+                    self.debug['reason'] = 'pickup_align_at_clearance'
                     return (*cmd, ev)
-            v = o['creep']
-            limit = min(.12, abs(v) * clamp(o['max_forward_steer_ratio'], 0, .95))
-            steer = clamp(0.8 * err, -limit, limit)
-            self.debug['reason'] = 'creep_to_stone'
-            return v + steer, v - steer, ev
+            self.debug['reason'] = 'pickup_forward_pulse'
+            return *self.pickup.pulse(now, raw_pose, 1, max(5, along)), ev
 
         if s == 'GRIP':
+            if status and not self._servo_at(status, 'grip', o['grip_close']) and self._elapsed(now) > o['servo_timeout_s']:
+                self._go('GRIP_BLOCKED', now, 'gripper did not reach configured close angle')
+                return 0.0, 0.0, ev
             if self._servo_done(now, status, 'grip', o['grip_close']):
                 self._go('CARRY', now, f'to zone {self.carrying}')
             return 0.0, 0.0, ev
@@ -779,6 +853,7 @@ def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=Fa
     dt, t, next_frame = 0.02, 0.0, 0.0
     pose, targets, obs = None, [], []
     l = r = 0.0
+    deadline = None
     robot.command('start', 0.0)
     while t < seconds and robot.state == 'RUNNING':
         robot.update(t)
@@ -786,11 +861,13 @@ def run_sim(cfg, stones, seconds=300.0, start=None, params=None, seed=0, show=Fa
             next_frame += 1.0 / rate
             pose, targets, obs = robot.perceive(t)
             l, r, events = planner.step(t, pose, targets, obs, robot.status(t))
+            deadline = planner.debug.get('wall_command_until') or planner.debug.get('pickup_command_until')
             for cmd, fields in events:
                 robot.command(cmd, t, **fields)
             if show and not _show(robot, planner, targets, t):
                 break
-        robot.command('drive', t, l=l, r=r, **floor)         # 50 Hz, like the sender thread
+        fresh = deadline is None or t < deadline
+        robot.command('drive', t, l=l if fresh else 0, r=r if fresh else 0, **floor)
         t += dt
     return {**robot.score(), 'released_by_planner': planner.released, 'time_s': round(t, 1),
             'log': planner.events_log, 'robot': robot}
@@ -916,7 +993,8 @@ def diagnostic_text(info):
         return '--' if value is None else f'{value:.1f}{suffix}'
     return (f"{info['state']} | {info['reason']} | L={info['l']:+.2f} R={info['r']:+.2f} | "
             f"goal={number('goal_distance_mm', 'mm')} err={number('heading_error_deg', 'deg')} | "
-            f"lock={info['lock_reason']}" + (f" | STALLED {info['stalled']}" if info.get('stalled') else ''))
+            f"lock={info['lock_reason']}" + (f" | STALLED {info['stalled']}" if info.get('stalled') else '')
+            + (' | Field shifted: recalibrate corners/background' if info.get('perception') == 'reference_moved' else ''))
 
 
 def run_real(args, cfg):
@@ -990,9 +1068,10 @@ def run_real(args, cfg):
                           'or run without min_duty. Stopping.')
                     break
                 l, r, events = planner.step(decision_t, snap.pose, snap.targets, snap.observations, status,
-                                            perception_status=snap.status, require_status=not dry_run)
+                                            perception_status=snap.status, require_status=not dry_run,
+                                            jaw_observations=getattr(snap, 'jaw_observations', ()))
                 if sender:
-                    sender.set(l, r, valid_until=planner.debug.get('wall_command_until'))
+                    sender.set(l, r, valid_until=planner.debug.get('wall_command_until') or planner.debug.get('pickup_command_until'))
                     for cmd, fields in events:
                         sender.event(cmd, **fields)
                 info = dict(planner.debug, t=decision_t, dry_run=dry_run, events=events,
@@ -1000,6 +1079,8 @@ def run_real(args, cfg):
                             video_frame=video_frame if writer is not None else None,
                             firmware=status, pose=snap.pose.as_dict() if snap.pose else None,
                             observation_list=snap.observations, target_list=snap.targets,
+                            jaw_observations=getattr(snap, 'jaw_observations', []),
+                            vision_diagnostics=perception.detector.diagnostics if isinstance(perception.detector.diagnostics, dict) else {},
                             tag_reason=perception.pose_est.last_reason if perception.pose_est else 'not configured')
                 trace.write(json.dumps(info) + '\n')
                 if decision_t-last_print >= .5:

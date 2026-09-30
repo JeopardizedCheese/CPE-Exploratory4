@@ -1,5 +1,9 @@
 # Gemstone sorting: overhead perception and robot link
 
+For the September 30 pickup and wall-blocking fixes, use
+[PICKUP_RECOVERY.md](PICKUP_RECOVERY.md). It covers the 70-degree close setting,
+stop/measure pickup, robot masking, and the required grip/field calibration.
+
 ## Camera-guided motion control
 
 The legacy wheel path maps every nonzero command to at least 71% PWM. For

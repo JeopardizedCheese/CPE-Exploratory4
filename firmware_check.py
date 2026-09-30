@@ -109,7 +109,7 @@ def main():
     p.add_argument('esp_ip')
     p.add_argument('--port', type=int, default=4211)
     p.add_argument('--grip-open', type=int, default=0, help='= GRIP_OPEN_DEG in config.h')
-    p.add_argument('--grip-close', type=int, default=40, help='= GRIP_CLOSE_DEG in config.h')
+    p.add_argument('--grip-close', type=int, default=70, help='= GRIP_CLOSE_DEG in config.h')
     args = p.parse_args()
     print('WHEELS OFF THE GROUND. Starting in 3 s...')
     time.sleep(3)

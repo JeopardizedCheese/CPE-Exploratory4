@@ -35,7 +35,7 @@ DEFAULT_PARAMS = {
     'axle_offset_mm': 0.0,       # tag centre is this far ahead of the wheel axle
     'ramp_per_s': 3.0,
     'servo_deg_per_s': 180.0,
-    'grip_servo': 0, 'grip_open': 0, 'grip_close': 40,
+    'grip_servo': 0, 'grip_open': 0, 'grip_close': 70,
     'servo_start': [90],
     'grip_reach_mm': 25.0,       # stone centre must be within this of the grip point (forward)
     'grip_side_mm': 18.0,        #   ... and this sideways

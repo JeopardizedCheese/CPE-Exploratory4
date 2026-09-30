@@ -32,7 +32,7 @@
 #define SERVO_START_DEG 0        // assumed position before the first command (no pulse is sent at boot)
 #define SERVO_DEG_PER_SEC 180.0f // slow moves reduce current spikes / brownout
 #define GRIP_OPEN_DEG 0          // measured: jaws open
-#define GRIP_CLOSE_DEG 40        // measured: holds every stone size with less strain
+#define GRIP_CLOSE_DEG 70        // user-confirmed close angle for the current gripper
 
 // ---------- Safety ----------
 #define DRIVE_TIMEOUT_MS 300     // no drive packet for this long -> wheels stop
