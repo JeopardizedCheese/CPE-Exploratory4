@@ -1,5 +1,9 @@
 # Gemstone sorting: overhead perception and robot link
 
+Thai field setup, dense-pile development plan and iPhone hotspot migration:
+[FIELD_PREPARATION_TH.md](FIELD_PREPARATION_TH.md). Use `network_check.py` to
+inspect UDP status without commanding motion. Firmware now defaults to DHCP.
+
 For the September 30 pickup and wall-blocking fixes, use
 [PICKUP_RECOVERY.md](PICKUP_RECOVERY.md). It covers the 70-degree close setting,
 stop/measure pickup, robot masking, and the required grip/field calibration.

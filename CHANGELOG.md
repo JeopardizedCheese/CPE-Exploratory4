@@ -1,5 +1,19 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-09-30: changing fields and iPhone hotspot preparation
+
+**EN**
+- Correct a missed firmware limit: close was set to 70 degrees but `SERVO_MAX_DEG` still clamped it to 55. Set the limit to 70 and fail compilation for out-of-range open/close targets; expose the configured angles/limits in status.
+- Default to DHCP instead of the old phone's static subnet. Announce the assigned address after connection/reconnection, retry UDP binding, and clear wheel commands/old status peer when the link is lost or its IP changes.
+- Add `network_check.py`, which sends only protocol pings and checks status and reported servo limits, without actuating the robot.
+- Document fresh field/camera/color calibration, measured gripper geometry, an iPhone setup sequence and the remaining dense-pile routing/segmentation work in `FIELD_PREPARATION_TH.md`. Correct obsolete firmware/button/setup instructions in `README_ROBOT.md`.
+- Validation: 189 tests pass, including actual servo/network helper code compiled against host stubs and a loopback UDP checker test. No ESP32 build/upload or physical iPhone/robot trial.
+
+**TH**
+- แก้เพดาน servo ที่ยังเป็น 55° ให้รองรับปิด 70° และตรวจค่าขัดกันตั้งแต่คอมไพล์
+- เปลี่ยนค่าเริ่มต้นเป็น DHCP สำหรับ hotspot ใหม่ พร้อมแสดง IP จริงหลังเชื่อมต่อ และเพิ่มเครื่องมือตรวจเครือข่ายที่ส่งเฉพาะ ping
+- เพิ่มคู่มือภาษาไทยสำหรับย้ายสนาม/กล้อง ใช้ iPhone hotspot และแผนทำเส้นทางอ้อมกองใหญ่ โดยระบุชัดว่างานกองส่วนใดยังไม่เสร็จ
+
 ## 2026-09-30: stop before gripping and recover beside piles
 
 **EN**

@@ -108,7 +108,7 @@ The reported servo angle is commanded position; there is no grasp-force sensor.
 
 ## Software validation
 
-Validation: **182 tests pass** with `python -m unittest discover -s tests`.
+Validation: **189 tests pass** with `python -m unittest discover -s tests`.
 Regressions cover capture at the jaw
 base, coasting, moved stones, mismatched servo angles, pulse expiry, blocked
 retreats, mask/exclusion interactions and recorded wall-obstacle positions.

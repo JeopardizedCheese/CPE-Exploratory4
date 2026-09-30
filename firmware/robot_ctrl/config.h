@@ -28,20 +28,29 @@
 #define SERVO_US_MIN 500         // pulse width at 0 deg   (same as course example 03)
 #define SERVO_US_MAX 2500        // pulse width at 180 deg
 #define SERVO_MIN_DEG 0          // never command outside this range
-#define SERVO_MAX_DEG 55         // a little past closed
+#define SERVO_MAX_DEG 70         // must allow the user-confirmed closed position
 #define SERVO_START_DEG 0        // assumed position before the first command (no pulse is sent at boot)
 #define SERVO_DEG_PER_SEC 180.0f // slow moves reduce current spikes / brownout
 #define GRIP_OPEN_DEG 0          // measured: jaws open
 #define GRIP_CLOSE_DEG 70        // user-confirmed close angle for the current gripper
+
+static_assert(SERVO_MIN_DEG >= 0 && SERVO_MAX_DEG <= 180 && SERVO_MIN_DEG <= SERVO_MAX_DEG,
+              "Servo limits must satisfy 0 <= min <= max <= 180");
+static_assert(GRIP_OPEN_DEG >= SERVO_MIN_DEG && GRIP_OPEN_DEG <= SERVO_MAX_DEG,
+              "GRIP_OPEN_DEG is outside servo limits");
+static_assert(GRIP_CLOSE_DEG >= SERVO_MIN_DEG && GRIP_CLOSE_DEG <= SERVO_MAX_DEG,
+              "GRIP_CLOSE_DEG is outside servo limits");
 
 // ---------- Safety ----------
 #define DRIVE_TIMEOUT_MS 300     // no drive packet for this long -> wheels stop
 #define STATUS_LED 23            // board LED: off = IDLE, on = RUNNING. -1 = none
 
 // ---------- Network ----------
-// Fixed IP on the team hotspot (10.178.188.0/24, gateway .223).
-// Set USE_STATIC_IP 0 to go back to an automatic (DHCP) address.
-#define USE_STATIC_IP 1
+// DHCP works when the team changes hotspot phones/subnets. Read the assigned
+// IP from Serial Monitor at 115200 baud and pass it to the Python tools.
+#define USE_STATIC_IP 0
+#define WIFI_HOSTNAME "gem-sorter"
+// Optional legacy static profile: only enable after checking the CURRENT router.
 #define STATIC_IP  10, 178, 188, 50
 #define GATEWAY_IP 10, 178, 188, 223
 #define SUBNET_IP  255, 255, 255, 0
