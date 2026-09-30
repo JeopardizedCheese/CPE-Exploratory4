@@ -14,6 +14,7 @@ A teammate may pick this up on another machine; they get the code via `git pull`
 - Drive floor per run: `autonomy.py --set min_duty=X` sends `m` with every `drive` packet; firmware uses it in place of `MIN_DUTY` (legacy ramp unchanged) and reports `min_duty` in status. Autonomy stops at once if the firmware doesn't report it. Default (unset) = firmware `MIN_DUTY` 0.71, identical to before. `--set` works for any autonomy option (typos rejected).
 - The old stall measurement behind `MIN_DUTY 0.71` is **not trusted** (partly measured on USB power, per the user).
 - Commit history for the whole arc: `git log --oneline 2f23e6e..92d8e1d`.
+- **2026-10-01**: vision 23.5 → 14.0 ms per frame, byte-identical output (`2013775`). **Next to build: the pile-mode fix, fully planned and decided in [PILE_FIX_PLAN.md](PILE_FIX_PLAN.md)** (touching stones show as "?" and the robot parks beside them). Commit `0c394d9` (run traces + videos, 1.7 GB incl. one 185 MB file, too big for GitHub) was removed from `main` on 2026-10-01 at the user's request; it is kept only on the local branch `backup/with-runs-0c394d9`, never pushed. The files are still in `runs/` on disk (gitignored).
 
 ## Key findings (evidence behind the current design)
 
@@ -28,6 +29,7 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 
 ## Open work, in the user's priority order
 
+0. **Build the pile-mode fix** per [PILE_FIX_PLAN.md](PILE_FIX_PLAN.md): test-first, `vision.pile_edge_pixels` switch (default `"nearest"`), `--set vision.*`, acceptance bar before pushing. Its "Related, not in scope" section lists the other 2026-10-01 findings (planner skip list / wall-margin rejections, parallax robot mask, shadow rule) that are still undecided.
 1. **Analyse the next recorded field run** (user/teammate will supply `runs/autonomy/<time>/` with `trace.jsonl` + `video.avi`): check pulse behaviour via trace keys `turn_phase`, `turn_pulse_s`, `turn_planned_deg`, `turn_moved_deg`, `pulse_gain`, `stalled`, `predict_mm`, `backoff_mm`. Compare real pulse rotation with `PULSE_TABLE`. New: check wall recovery on the real robot (`wall_phase`, `wall_reason`, `wall_clearance_mm`; how far one 0.15 s drive pulse and one 0.2 s turn pulse really move; whether a robot pinned on a wall gets free). `WALL_RECOVERY.md` has a field check procedure.
 2. **Stop overshoot in APPROACH** (analysed 2026-09-30, user has not chosen yet): options offered, in the suggested order: (a) bench test firmware short-brake (`inengmotor.brake()`) on a zero command vs coast — needs a reflash, and check the driver chip really brakes with both inputs high; (b) speed-proportional stop lead in APPROACH only (`grip_tol + speed × stop_lead_s`), test-first; (c) a coast term in `sim.py` so (b) can be validated. Fallback: pulse-driving APPROACH like pulse turning (precise, slower).
 3. **Drive floor from the duty sweep**: `motion_control.py --test-duty` (forward/left/right, `runs/motion/`) gives the lowest duty that reliably moves and turns the robot on a charged battery. Use it as `--set min_duty=X` for autonomy (no reflash); once settled, put it in `calib.json` or `MIN_DUTY`. `PULSE_TABLE` and `sim.FIELD_PARAMS` (stall_duty 0.65 assumed) are fitted at 0.71 and need a refit from the new runs.
@@ -43,6 +45,9 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 - Prefers changes that are certain; wants data first, then discussion; likes being "grilled" on decisions. Concise answers when asking for commands.
 - Team recalibrates the field every run (`calibrate_arena.py` → `find_zones.py`). Competition layout differs from practice.
 - Commit per logical change; user asked to merge to `main` and push (2026-09-29 and again 2026-09-30). Write CHANGELOG entries (EN + TH) for changes.
+- **With every command to run a script, remind the user of the valid flags and switches** (list in PILE_FIX_PLAN.md; keep it current).
+- Match start: all gems start in one big pile and the team will make the robot crash into it. **The user will provide that code; don't write it.** Vision changes must keep the big pile's colour-0 observation.
+- No field testing time is left (2026-10-01): judge changes by replay of recorded runs and tests; offer config switches as the fallback at the match.
 - Robot ESP32 is on the team hotspot at a fixed private IP (see `firmware/robot_ctrl/config.h`); camera index 1.
 
 ## Useful commands
