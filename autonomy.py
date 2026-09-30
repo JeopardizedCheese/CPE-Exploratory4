@@ -87,6 +87,12 @@ DEFAULTS = {
     # run: --set min_duty=0.5. PULSE_TABLE was measured at 0.71: with a lower floor the first
     # pulses turn less, until pulse_gain has learned the new robot.
     'min_duty': None,
+    # Practice fields with fewer zones: deliver a colour that has no zone of its own to another
+    # colour's zone, e.g. {"1": 3} = violet stones go to the crimson zone. The planner treats
+    # such a stone as that colour from the moment it is seen (the real colour stays in
+    # 'raw_color'). Colours with no zone and no alias are never picked, only avoided.
+    # Competition: leave empty (an aliased stone scores as wrong). Off per run: --set color_alias={}
+    'color_alias': {},
 }
 
 
@@ -128,6 +134,7 @@ class Planner:
         self.footprint = tag.get('footprint_mm', {'front': 170, 'back': 110, 'left': 105, 'right': 105})
         self.zones = {int(str(k).split('_')[0]): (z['center_mm'][0], z['center_mm'][1], z['radius_mm'])
                       for k, z in cfg.get('zones', {}).items()}
+        self.alias = {int(k): int(v) for k, v in (self.o['color_alias'] or {}).items()}
         w, h = cfg['arena']['size_mm']
         self.wall = WallGuard(cfg, self.o)
         self.park = self.wall.clamp_tag_goal(*(self.o['park_mm'] or [w * 0.85, h * 0.5]))
@@ -179,6 +186,10 @@ class Planner:
         if t:
             self.skip.append((t['x'], t['y'], now + self.o['skip_s']))
         self.lock.release(why)
+
+    def _relabel(self, t):
+        c = self.alias.get(t['color'])
+        return t if c is None else dict(t, color=c, raw_color=t['color'])
 
     def _usable(self, t, now):
         if t['color'] not in self.zones:
@@ -401,6 +412,9 @@ class Planner:
         Real runs require fresh firmware status and valid perception. Simulation
         callers may omit status; neither a lost tag nor invalid vision is bypassed.
         """
+        if self.alias:
+            targets = [self._relabel(t) for t in targets]
+            observations = [self._relabel(o) for o in observations]
         before = self.state
         self.debug = {'state': before, 'reason': '', 'targets': len(targets),
                       'observations': len(observations), 'perception': perception_status,
@@ -891,19 +905,33 @@ def setup_problems(cfg, config_path):
     arena = cfg.get('arena', {})
     if len(arena.get('corners_px', [])) != 4:
         problems.append('arena.corners_px needs four calibrated corners')
-    missing = [str(cid) for cid in range(1, 7)
+    # zone_colors: the scoring zones on this field (default all six; a practice field may
+    # have fewer). Stones need HSV ranges for every zone colour and every aliased colour.
+    from find_zones import expected_zone_colors
+    zone_colors = expected_zone_colors(cfg)
+    alias = {int(k): int(v) for k, v in (cfg.get('autonomy', {}).get('color_alias') or {}).items()}
+    for src, dst in sorted(alias.items()):
+        if dst not in zone_colors or src in zone_colors:
+            problems.append(f'color_alias {src}->{dst}: the target must be a zone on this field '
+                            f'{zone_colors} and the source must not have its own zone')
+    missing = [str(cid) for cid in sorted(set(zone_colors) | set(alias))
                if not any(str(k).split('_')[0] == str(cid) and bool(v)
                           for k, v in cfg.get('hsv', {}).items())]
     if missing:
         problems.append('missing HSV color IDs: ' + ', '.join(missing))
     zones = cfg.get('zones', {})
-    if {str(k).split('_')[0] for k in zones} != {str(c) for c in range(1, 7)}:
-        problems.append('zones must contain all six labeled scoring destinations')
+    if sorted(int(str(k).split('_')[0]) for k in zones) != zone_colors:
+        problems.append(f'zones must contain exactly the labeled scoring destinations {zone_colors} '
+                        '(run find_zones.py; set "zone_colors" for a field with fewer zones)')
     for key, zone in zones.items():
         if len(zone.get('center_mm', [])) != 2 or zone.get('radius_mm', 0) <= 0:
             problems.append(f'invalid zone geometry: {key}')
     if not cfg.get('robot_tag'):
         problems.append('robot_tag configuration is missing')
+    for key in ('camera_height_mm', 'camera_floor_xy_mm'):
+        if key in cfg.get('robot_tag', {}) and cfg['robot_tag'][key] is None:
+            problems.append(f'robot_tag.{key} not measured yet (null): floor to lens height / '
+                            'floor point under the lens in field mm (see minifield/README.md)')
     background_path = Path(config_path).parent / cfg.get('background_path', 'background.png')
     if not background_path.is_file():
         problems.append('missing empty-field reference: ' + str(background_path))

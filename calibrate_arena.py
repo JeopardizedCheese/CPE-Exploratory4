@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import cv2
 import numpy as np
+from find_zones import expected_zone_colors
 from vision import warp
 
 
@@ -84,8 +85,9 @@ def main():
                 if points:
                     print('Finish current polygon with ENTER or undo its points first.')
                     continue
-                if 0 < len(polygons) < 6:
-                    print('Mark all six scoring zones, or none (then run find_zones.py).')
+                expected = len(expected_zone_colors(cfg))
+                if 0 < len(polygons) < expected:
+                    print(f'Mark all {expected} scoring zones, or none (then run find_zones.py).')
                     continue
                 cfg['exclude_polygons'] = polygons
                 cfg['zones'] = {}  # Destination coordinates from an old geometry are invalid.

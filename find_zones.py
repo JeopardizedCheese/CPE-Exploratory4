@@ -1,9 +1,10 @@
-"""Find the six colored scoring zones in background.png and exclude them automatically.
+"""Find the colored scoring zones in background.png and exclude them automatically.
 
 Replaces hand-drawn exclude_polygons with circles grown by the white ring plus a
 margin, and records each zone's color and center (arena mm) under "zones".
-Run after calibrate_arena.py (empty field). Nothing is saved unless exactly six
-zones are found and you press s (or pass --yes).
+Run after calibrate_arena.py (empty field). Nothing is saved unless exactly the
+expected zones are found and you press s (or pass --yes). Expected = all six colours,
+or the config's "zone_colors" list for a practice field with fewer zones, e.g. [3, 6].
 
     python find_zones.py                         # preview, s = save, q = quit
     python find_zones.py --margin-mm 25
@@ -76,7 +77,7 @@ def circle_polygon(cx, cy, r, points=32):
 
 
 def apply(cfg, zones, ring_mm, margin_mm):
-    problems = check(zones)
+    problems = check(zones, expected_zone_colors(cfg))
     if problems:
         raise ValueError('; '.join(problems))
     scale = float(cfg.get('arena', {}).get('mm_per_px', 2))
@@ -102,13 +103,20 @@ def draw(background, zones, cfg, ring_mm, margin_mm):
     return view
 
 
-def check(zones, expected=6):
+def expected_zone_colors(cfg):
+    """Colour IDs of the scoring zones on this field: "zone_colors", default all six."""
+    return sorted(int(c) for c in cfg.get('zone_colors', NAMES))
+
+
+def check(zones, expected=None):
+    expected = sorted(NAMES) if expected is None else sorted(expected)
     problems = []
-    if len(zones) != expected:
-        problems.append(f'found {len(zones)} zones, expected {expected}')
+    if len(zones) != len(expected):
+        problems.append(f'found {len(zones)} zones, expected {len(expected)}')
     colors = [z['color'] for z in zones]
-    if set(colors) != set(NAMES):
-        problems.append('assign all six different colors; unknown/ambiguous labels cannot be saved')
+    if sorted(set(colors)) != expected:
+        names = ', '.join(f'{c} {NAMES.get(c, "?")}' for c in expected)
+        problems.append(f'assign exactly these colors: {names}; unknown/ambiguous labels cannot be saved')
     duplicate = sorted({NAMES.get(c, '?') for c in colors if colors.count(c) > 1})
     if duplicate:
         problems.append(f'same color assigned twice: {duplicate} (check HSV ranges)')
@@ -122,24 +130,25 @@ def main():
     p.add_argument('--ring-mm', type=float, default=8.0, help='Width of the white ring around each zone')
     p.add_argument('--min-saturation', type=float, help='Override the automatic zone threshold')
     p.add_argument('--yes', action='store_true', help='Save without preview if the check passes')
-    p.add_argument('--labels', type=int, nargs=6, help='Manual color IDs in the printed zone order')
+    p.add_argument('--labels', type=int, nargs='+', help='Manual color IDs in the printed zone order')
     args = p.parse_args()
     cfg = json.loads(args.config.read_text())
+    expected = expected_zone_colors(cfg)
     path = args.config.parent / cfg.get('background_path', 'background.png')
     background = cv2.imread(str(path))
     if background is None:
         raise SystemExit(f'No background at {path}; run calibrate_arena.py on the empty field first')
     zones, threshold = find_zones(background, cfg, args.min_saturation)
     if args.labels:
-        if len(zones) != 6 or set(args.labels) != set(NAMES):
-            raise SystemExit('--labels needs six detected zones and each ID 1..6 exactly once')
+        if len(zones) != len(expected) or sorted(args.labels) != expected:
+            raise SystemExit(f'--labels needs {len(expected)} detected zones and each ID of {expected} exactly once')
         for z, cid in zip(zones, args.labels):
             z['color'] = cid
     print(f'saturation threshold {threshold:.0f}')
     for index, z in enumerate(zones, 1):
         x, y = z['center_px']
         print(f'  zone {index}: {NAMES.get(z["color"], "?"):8s} center=({x:.0f},{y:.0f})px radius={z["radius_px"]:.0f}px hsv={z["hsv"]}')
-    problems = check(zones)
+    problems = check(zones, expected)
     for problem in problems:
         print('PROBLEM:', problem)
     if args.yes:
@@ -157,7 +166,7 @@ def main():
     cv2.setMouseCallback('zones', select)
     print('Click a circle, press 1 violet / 2 cyan / 3 crimson / 4 orange / 5 skyblue / 6 lime.')
     while True:
-        problems = check(zones)
+        problems = check(zones, expected)
         view = draw(background, zones, cfg, args.ring_mm, args.margin_mm)
         if selected[0] is not None:
             z = zones[selected[0]]

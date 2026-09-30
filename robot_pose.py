@@ -65,6 +65,9 @@ class RobotPoseEstimator:
         self.tag_id = int(tag.get('id', 0))
         self.size_mm = float(tag.get('size_mm', 100))
         self.tag_h = float(tag.get('height_mm', 0))
+        unmeasured = [k for k in ('camera_height_mm', 'camera_floor_xy_mm') if k in tag and tag[k] is None]
+        if unmeasured:
+            raise ValueError('robot_tag.' + ' and '.join(unmeasured) + ' not measured yet (null in the config)')
         self.cam_h = float(tag.get('camera_height_mm', 2000))
         if self.cam_h <= self.tag_h:
             raise ValueError('camera_height_mm must be larger than height_mm')
