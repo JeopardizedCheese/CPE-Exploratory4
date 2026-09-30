@@ -24,15 +24,15 @@
 #define DUTY_RAMP_UP_PER_SEC 0.6f   // speed-up limit; slow-down and reversal to zero are instant
 
 // ---------- Gripper servo (SG90) ----------
-#define SERVO_PIN 19             // IN-ENG board servo header
-#define SERVO_US_MIN 500         // pulse width at 0 deg   (same as course example 03)
-#define SERVO_US_MAX 2500        // pulse width at 180 deg
+#define SERVO_PIN 33             // IN-ENG board servo header
+#define SERVO_US_MIN 2500         // pulse width at 0 deg   (same as course example 03)
+#define SERVO_US_MAX 500        // pulse width at 180 deg
 #define SERVO_MIN_DEG 0          // never command outside this range
-#define SERVO_MAX_DEG 55         // a little past closed
+#define SERVO_MAX_DEG 125         // a little past closed
 #define SERVO_START_DEG 0        // assumed position before the first command (no pulse is sent at boot)
 #define SERVO_DEG_PER_SEC 180.0f // slow moves reduce current spikes / brownout
 #define GRIP_OPEN_DEG 0          // measured: jaws open
-#define GRIP_CLOSE_DEG 40        // measured: holds every stone size with less strain
+#define GRIP_CLOSE_DEG 100        // measured: holds every stone size with less strain
 
 // ---------- Safety ----------
 #define DRIVE_TIMEOUT_MS 300     // no drive packet for this long -> wheels stop
