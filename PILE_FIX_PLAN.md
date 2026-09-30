@@ -1,8 +1,9 @@
 # Plan: pile-mode fix (touching stones shown as "?")
 
 Status 2026-10-01: **designed and decided, not built.** A prototype exists (code in the appendix). The next session
-builds it, following this file. Build test-first; the decisions below are settled, so don't re-open them. The one
-question marked **Ask first** was never put to the user.
+builds it, following this file. Build test-first; the decisions below are settled, so don't re-open them. Readiness
+was checked on 2026-10-01 (plan matches the code, 163 tests pass, replay runs and the 09:15 reference are on disk);
+the user will say when to build.
 
 ## The problem (evidence)
 
@@ -44,14 +45,17 @@ pointing away from its neighbours. On the 0920 pile, 2–3 edge stones become ta
 | Q8 | Confidence stays `fraction × dominance`, as today. The fix only changes which pixels belong to a stone. |
 | Q9 | One commit per logical change. The pile fix **stays local** until the user has seen the acceptance evidence. |
 | Q10 | `--set` accepts named vision keys: `--set vision.pile_edge_pixels=legacy`, `--set vision.own_reach_mm=12`; typos rejected. |
+| Q12 | A pile stone's centre (where the gripper aims) is the centroid of `own` (core + pale rim), in `"nearest"` mode. In `"legacy"` mode it stays the core centroid. |
 
 User context: at match start all gems are clumped into one big pile, and the team will make the robot crash into
 it. **Do not write crash code; the user will provide it.** Keep the big pile's colour-0 observation in the output
 (the fix only adds edge-stone targets beside it; it already does).
 
-**Ask first (never asked):** where is a pile stone's centre, i.e. where the gripper aims? Legacy uses the centroid of
-the saturated core, which leans toward the stone's shadowed side. The prototype uses the centroid of `own` (core +
-rim), which is closer to the true centre. Recommend `own`. In `"legacy"` mode it must stay the core centroid.
+Why Q12: legacy uses the centroid of the saturated core, which leans toward the stone's shadowed side; the centroid
+of `own` (core + rim) is closer to the true centre.
+
+Build detail (not a user decision): count votes as today, on the pixels that really voted (`region & region_all` in
+legacy terms), not on the morphologically closed region the appendix uses, so confidence stays exactly as Q8 says.
 
 ## Build steps
 
@@ -89,9 +93,9 @@ rim), which is closer to the true centre. Recommend `own`. In `"legacy"` mode it
 The simulator can't judge this: `sim.py` never calls `vision.py` (it makes its own detections), so `sim_bench` can
 neither show the gain nor any harm. Don't cite a sim number for this change.
 
-Replays need the 09:15 empty-field reference. `background.png` at commit `2013775` is that file; if the team
-recalibrates, restore it for replays with `git show 2013775:background.png > <scratch>/background_0915.png` and pass
-that path.
+Replays need the 09:15 empty-field reference. `background.png` is gitignored and was never committed, so git can't
+restore it. A copy is `background_0915.png` in the repo root (untracked on purpose, original author's laptop only;
+don't commit it). The team recalibrates every run, which overwrites `background.png`, so replays read the copy.
 
 ## Related, not in scope (found in the same study; the user has not decided)
 
@@ -145,7 +149,7 @@ for idx, cid in enumerate(info, start=1):
     fraction = votes_here / len(ox)
     if fraction < options.get('min_color_fraction', .3):
         continue
-    cx, cy = ox.mean(), oy.mean()                   # "Ask first": own centroid vs core centroid
+    cx, cy = ox.mean(), oy.mean()                   # Q12: own centroid
     # restore: dominance over other colours' votes within own_radius of (cx, cy), as legacy
     outward = np.arctan2(cy - by, cx - bx)
     if np.hypot(cx - bx, cy - by) < 1:
@@ -158,7 +162,7 @@ for idx, cid in enumerate(info, start=1):
 ## Appendix B: replay comparison (acceptance bar items 2–3)
 
 Run from the repo root: `.venv/bin/python <script> 20260930-091711-b90153,20260930-092017-7dd201,20260930-092247-df6aea out.png`.
-It needs `runs/` (on the original author's laptop only, gitignored) and the 09:15 `background.png`.
+It needs `runs/` (on the original author's laptop only, gitignored) and the 09:15 reference `background_0915.png`.
 
 ```python
 import sys, json, math, cv2, numpy as np, collections
@@ -166,7 +170,7 @@ sys.path.insert(0, '.')
 from perception import Perception
 st = collections.Counter(); tiles = []; seen = []
 for run in sys.argv[1].split(','):
-    cfg = json.load(open(f'runs/autonomy/{run}/config.json')); bg = cv2.imread('background.png')
+    cfg = json.load(open(f'runs/autonomy/{run}/config.json')); bg = cv2.imread('background_0915.png')
     cfg_old = json.loads(json.dumps(cfg)); cfg_old.setdefault('vision', {})['pile_edge_pixels'] = 'legacy'
     cfg_new = json.loads(json.dumps(cfg)); cfg_new.setdefault('vision', {})['pile_edge_pixels'] = 'nearest'
     a, b = Perception(cfg_old, bg), Perception(cfg_new, bg)
