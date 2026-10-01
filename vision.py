@@ -250,10 +250,20 @@ class Detector:
                         observations[-1].isolated = True
                         observations[-1].approach_deg = approach
                 elif max(votes.values(), default=0) >= region_min_px:
-                    for rx, ry, rc, conf, rarea, approach in directional_candidates(
-                            labels, label, (bx, by, bw, bh), color_masks, votable, blocked,
-                            scale, self.options):
-                        observations.append(Observation(rx, ry, rc, conf, rarea, True, False, approach))
+                    if self.options.get('pile_edge_pixels', 'legacy') == 'nearest':
+                        for rx, ry, rc, conf, rarea, approach, kind in pile_regions(
+                                labels, label, (bx, by, bw, bh), color_masks, votable, blocked,
+                                scale, self.options):
+                            if approach is not None:
+                                observations.append(Observation(rx, ry, rc, conf, rarea, True, False, approach,
+                                                                reason='pile_' + kind))
+                            elif self.options.get('pile_regions', False):
+                                observations.append(Observation(rx, ry, rc, conf, rarea, reason='pile_buried'))
+                    else:
+                        for rx, ry, rc, conf, rarea, approach in directional_candidates(
+                                labels, label, (bx, by, bw, bh), color_masks, votable, blocked,
+                                scale, self.options):
+                            observations.append(Observation(rx, ry, rc, conf, rarea, True, False, approach))
         used = set()
         new_counts = []
         for obs in observations:
@@ -387,6 +397,116 @@ def directional_candidates(labels, label, bbox, color_masks, votable, blocked, s
                 found.append((float(cx + x0), float(cy + y0), cid, round(fraction * dominance, 3),
                               area_mm2, approach))
     return found
+
+
+def _nearest_region(regions):
+    """regions: int array, 0 = no region, 1..n = region index. Returns (nearest, dist): for every
+    pixel the index of the nearest region pixel, and the distance to it (0 inside a region)."""
+    dist, near = cv2.distanceTransformWithLabels(np.uint8(regions == 0), cv2.DIST_L2, 5,
+                                                 labelType=cv2.DIST_LABEL_PIXEL)
+    # Every region pixel gets its own label and is its own nearest pixel, so a lookup table
+    # from label to region index needs no assumption about the label order.
+    inside = regions != 0
+    lut = np.zeros(int(near.max()) + 1, np.int32)
+    lut[near[inside]] = regions[inside]
+    return lut[near], dist
+
+
+def pile_regions(labels, label, bbox, color_masks, votable, blocked, scale, options):
+    """Pile handling with vision.pile_edge_pixels = "nearest" (V2; see profiles.py).
+
+    Like directional_candidates, but a blob pixel that votes for no colour (a stone's pale
+    highlight or blurred rim) belongs to the nearest single-colour region if it is within
+    own_reach_mm of it. That region plus those pixels is the stone ("own"): its size, colour
+    fraction, centre (aim point) and corridor test use it. In legacy mode those pixels count
+    as obstacles and block the stone's own corridor, so no pile stone was ever pickable.
+
+    Returns [(x_px, y_px, color, confidence, area_mm2, approach_deg, kind)], kind:
+      'edge'       a gripper-wide corridor away from the pile is free (pickable)
+      'outermost'  vision.pile_outermost and no edge stone in this blob: the stone farthest from
+                   the blob's centre whose own exit line (outermost_width_mm wide, about one stone)
+                   is clear of everything, the pile included, and whose gripper-wide corridor is
+                   blocked by nothing but this pile (the jaws may brush its neighbours). Pickable,
+                   confidence halved.
+      'buried'     looks like one stone but has no way in (approach_deg None)
+    """
+    width_px = options.get('gripper_width_mm', 60) / scale
+    length_px = options.get('approach_length_mm', 80) / scale
+    own_radius = options.get('own_radius_mm', 25) / scale
+    own_reach = options.get('own_reach_mm', 15) / scale
+    min_area = options.get('region_min_mm2', 150)
+    max_area = options.get('region_max_mm2', 2000)
+    max_extent = options.get('max_gem_extent_mm', 70)
+    max_turn = np.radians(options.get('max_approach_turn_deg', 67.5))
+    start_px = options.get('approach_start_mm', 6) / scale
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    bx0, by0, bw, bh = bbox
+    margin = int(np.ceil(length_px + width_px + own_radius)) + 2
+    H, W = labels.shape
+    y0, x0 = max(0, by0 - margin), max(0, bx0 - margin)
+    y1, x1 = min(H, by0 + bh + margin), min(W, bx0 + bw + margin)
+    window = (slice(y0, y1), slice(x0, x1))
+    component = labels[window] == label
+    votable, blocked = votable[window], blocked[window]
+    cores = {cid: component & votable & (m[window] > 0) for cid, m in color_masks.items()}
+    ys, xs = np.nonzero(component)
+    bx, by = xs.mean(), ys.mean()
+    regions = np.zeros(component.shape, np.int32)       # every single-colour region, numbered 1..n
+    region_color = []
+    for cid, core in cores.items():
+        if not core.any():
+            continue
+        n, lab = cv2.connectedComponents(cv2.morphologyEx(core.astype(np.uint8), cv2.MORPH_CLOSE, kernel))
+        for r in range(1, n):
+            region_color.append(cid)
+            regions[(lab == r) & component & (regions == 0)] = len(region_color)
+    if not region_color:
+        return []
+    nearest, dist = _nearest_region(regions)
+    claimable = component & (regions == 0) & (dist <= own_reach)
+    voted = np.zeros_like(component)
+    for core in cores.values():
+        voted |= core
+    stones = []
+    for idx, cid in enumerate(region_color, start=1):
+        region = regions == idx
+        own = region | (claimable & (nearest == idx))
+        oy, ox = np.nonzero(own)
+        if not len(ox):
+            continue
+        area_mm2 = len(ox) * scale * scale
+        extent = max(ox.max() - ox.min() + 1, oy.max() - oy.min() + 1) * scale
+        if not (min_area <= area_mm2 <= max_area) or extent > max_extent:
+            continue
+        votes_here = np.count_nonzero(region & cores[cid])     # pixels that really voted
+        fraction = votes_here / len(ox)
+        if fraction < options.get('min_color_fraction', .3):
+            continue
+        cx, cy = ox.mean(), oy.mean()                         # aim point: core + rim
+        circle = np.zeros(component.shape, np.uint8)
+        cv2.circle(circle, (int(round(cx)), int(round(cy))), int(round(own_radius)), 1, -1)
+        others = voted & ~cores[cid] & (circle > 0)
+        dominance = votes_here / max(1, votes_here + np.count_nonzero(others))
+        outward = np.arctan2(cy - by, cx - bx)
+        if np.hypot(cx - bx, cy - by) < 1:
+            outward = _away_from_nearest(blocked, own, cx, cy)
+        approach = _find_approach(blocked, own, cx, cy, outward, width_px, length_px, max_turn, start_px)
+        stones.append([float(cx + x0), float(cy + y0), cid, round(fraction * dominance, 3), area_mm2,
+                       approach, 'edge' if approach is not None else 'buried', own, outward,
+                       np.hypot(cx - bx, cy - by)])
+    if options.get('pile_outermost', False) and stones and all(s[5] is None for s in stones):
+        rest = blocked & ~component                            # only this pile may be in the way
+        line_px = options.get('outermost_width_mm', 30) / scale
+        for s in sorted(stones, key=lambda s: -s[9]):
+            cx, cy, own = s[0] - x0, s[1] - y0, s[7]
+            approach = _find_approach(blocked, own, cx, cy, s[8], line_px, length_px, max_turn, start_px)
+            if approach is not None and not _corridor_free(rest, own, cx, cy, np.radians(approach) + np.pi,
+                                                           width_px, length_px, start_px):
+                approach = None                                # something other than the pile is there
+            if approach is not None:
+                s[3], s[5], s[6] = round(s[3] / 2, 3), approach, 'outermost'
+                break
+    return [tuple(s[:7]) for s in stones]
 
 
 def make_packet(observations, cfg, seq, session, status, timestamp):
