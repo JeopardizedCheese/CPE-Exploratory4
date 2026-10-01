@@ -178,3 +178,57 @@ class ProfileTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def wall_cfg(height=1200, clamp=True):
+    """Violet zone near the top wall, cyan zone further along it: carrying cyan from the
+    left, the straight line runs past violet on the wall side."""
+    cfg = config()
+    cfg['arena']['size_mm'] = [2100, height]
+    cfg['zones'] = {'1_violet': {'center_mm': [700, 200], 'radius_mm': 110},
+                    '2_cyan': {'center_mm': [1300, 200], 'radius_mm': 110}}
+    cfg['autonomy'] = {'carry_wall_clamp': clamp}
+    return cfg
+
+
+class CarryWallClampTests(unittest.TestCase):
+    """carry_wall_clamp (V2): a detour around another zone never sends the robot to a wall."""
+
+    def waypoint(self, cfg, a=(300, 150), b=(1300, 200)):
+        p = Planner(cfg)
+        p.carrying = 2
+        return p, p._carry_waypoint(*a, *b)
+
+    def test_off_keeps_the_old_detour_into_the_wall(self):
+        _, (x, y) = self.waypoint(wall_cfg(clamp=False))
+        self.assertLess(y, 0)                                   # the field bug: beyond the top wall
+
+    def test_passes_on_the_zone_side_away_from_the_wall(self):
+        p, (x, y) = self.waypoint(wall_cfg())
+        self.assertTrue(p._inside_wall_box(x, y))
+        self.assertGreater(y, 200 + 110)                        # below violet, clear of it
+        self.assertAlmostEqual(x, 700, delta=40)
+
+    def test_both_sides_blocked_pulls_the_point_in(self):
+        cfg = wall_cfg(height=600)
+        cfg['zones']['1_violet']['center_mm'] = [700, 300]
+        cfg['zones']['2_cyan']['center_mm'] = [1300, 300]
+        p, (x, y) = self.waypoint(cfg, (300, 280), (1300, 300))
+        self.assertTrue(p._inside_wall_box(x, y))
+
+    def test_zone_centre_is_never_moved(self):
+        p, goal = self.waypoint(wall_cfg(), (1300, 600), (1300, 200))
+        self.assertEqual(goal, (1300, 200))                     # zone near the wall stays reachable
+
+    def test_detour_already_clear_of_walls_is_unchanged(self):
+        on, off = wall_cfg(), wall_cfg(clamp=False)
+        for cfg in (on, off):
+            cfg['zones']['1_violet']['center_mm'] = [700, 600]
+            cfg['zones']['2_cyan']['center_mm'] = [1300, 600]
+        self.assertEqual(self.waypoint(on, (300, 560))[1], self.waypoint(off, (300, 560))[1])
+
+    def test_switch_only_in_v2_and_v3(self):
+        self.assertFalse(profiles.PROFILES['v1']['autonomy']['carry_wall_clamp'])
+        self.assertTrue(profiles.PROFILES['v2']['autonomy']['carry_wall_clamp'])
+        self.assertTrue(profiles.PROFILES['v3']['autonomy']['carry_wall_clamp'])
+        self.assertFalse(autonomy.DEFAULTS['carry_wall_clamp'])

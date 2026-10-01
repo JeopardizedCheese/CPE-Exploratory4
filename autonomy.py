@@ -104,6 +104,9 @@ DEFAULTS = {
     # skip_alone_s: a stone skipped after a failed attempt is retried after this many seconds
     # when it is the only stone on offer (instead of parking for the whole skip_s). None = off.
     'commit_target': False,
+    # V2: a carry detour around a zone never puts the robot against a wall (other side of the
+    # zone, else pulled in to the wall margin). The zone centre itself is never moved.
+    'carry_wall_clamp': False,
     'skip_alone_s': None,
     # V3 switch: grip check. Once the jaws have closed, the gripper camera (HuskyLens on the
     # ESP32, "look" command) classifies them 5 times. Empty (empty_votes agree) -> open, back
@@ -359,7 +362,20 @@ class Planner:
         if d < 1:                                   # line goes through the centre: pass on the left
             px, py, d = zx - dy / math.sqrt(L2), zy + dx / math.sqrt(L2), 1.0
         out = (zr + clear) * 1.15
-        return zx + (px - zx) / d * out, zy + (py - zy) / d * out
+        ux, uy = (px - zx) / d, (py - zy) / d
+        detour = zx + ux * out, zy + uy * out
+        if not self.o['carry_wall_clamp'] or self._inside_wall_box(*detour):
+            return detour
+        # The detour would put the robot against a wall (field 2026-09-30: robot driven into
+        # the wall on its way round a zone). Pass on the zone's other side if that one is
+        # clear of the walls, else pull the detour point in from the wall.
+        other = zx - ux * out, zy - uy * out
+        if self._inside_wall_box(*other):
+            return other
+        return self.wall.clamp_tag_goal(*detour)
+
+    def _inside_wall_box(self, x, y):
+        return self.wall.clamp_tag_goal(x, y) == (x, y)
 
     def _choose(self, pose):
         def cost(t):

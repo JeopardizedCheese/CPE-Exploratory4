@@ -1,5 +1,19 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-02: V2 carry detour kept off the walls (`carry_wall_clamp`)
+
+**EN**
+- New V2/V3 switch `autonomy.carry_wall_clamp` (V1 off, unchanged). While carrying, a detour point around another zone that would sit within the wall margin now goes round the zone's other side; if both sides are too close to a wall it is pulled in to the margin. The zone centre itself is never moved. Off per run: `--set carry_wall_clamp=false`.
+- Field traps of 2026-09-30 replayed through the planner: the old code reproduces the goals that drove the robot into the wall, (654, 16) in 061731 and (1293, 1107) in 062142; the new code gives (782, 484) and (1371, 615).
+- Simulator, V2, 36 seeds x scattered/pile, 180 s, charged, min_duty 0.65, paired seeds: practice layout (calib.json zones) scattered 157 -> 156, pile 107 -> 108 correct, wall recoveries 78 -> 77; 3 of 72 runs differ (1 better, 2 worse by one stone). Competition layout (zones from the organisers' picture): the detour never reached a wall, identical results. So: neutral in the simulator (it has no self-blobs, the cause of the field traps), fixes the field geometry.
+- Tests: 239 pass (6 new in `tests/test_v2.py`).
+
+**TH**
+- สวิตช์ใหม่ของ V2/V3 `autonomy.carry_wall_clamp` (V1 ปิด ไม่เปลี่ยน) ระหว่างขนหิน จุดอ้อมรอบโซนอื่นที่จะไปอยู่ในระยะกันชนผนัง จะอ้อมไปอีกด้านของโซนแทน ถ้าทั้งสองด้านชิดผนังเกินไปจะดึงจุดเข้ามาที่ระยะกันชน จุดกลางโซนไม่ถูกย้ายเลย ปิดต่อรอบ: `--set carry_wall_clamp=false`
+- เล่นซ้ำกับดักในสนามวันที่ 2026-09-30 ผ่าน planner: โค้ดเดิมให้เป้าเดียวกับที่พาหุ่นชนผนัง (654, 16) ใน 061731 และ (1293, 1107) ใน 062142 โค้ดใหม่ให้ (782, 484) และ (1371, 615)
+- ตัวจำลอง V2 36 seed × scattered/pile 180 s แบตเต็ม min_duty 0.65 seed เดียวกัน: ผังสนามซ้อม (โซนใน calib.json) scattered 157 -> 156, pile 107 -> 108 ถูก, wall recovery 78 -> 77; ต่างกัน 3 จาก 72 รอบ (ดีขึ้น 1 แย่ลง 2 ต่างกันหนึ่งก้อน) ผังสนามแข่ง (โซนจากภาพของผู้จัด): จุดอ้อมไม่เคยชิดผนัง ผลเหมือนเดิมทุกรอบ สรุป: ในตัวจำลองเป็นกลาง (ตัวจำลองไม่มี self-blob ซึ่งเป็นต้นเหตุของกับดักในสนาม) แต่แก้เรขาคณิตที่เกิดในสนามจริง
+- เทสต์: ผ่าน 239 (ใหม่ 6 ใน `tests/test_v2.py`)
+
 ## 2026-10-01 (night, later): camera floor point from the clicked corners (PR, merged into v1-v2-split)
 
 **EN**

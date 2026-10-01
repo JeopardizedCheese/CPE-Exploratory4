@@ -131,6 +131,7 @@ Runner flags (both): `--camera N`, `--config PATH`, `--record` (video.avi beside
 | `vision.pile_regions=true\|false` | false | true | buried pile stones reported with their colour |
 | `commit_target=true\|false` | false | true | keep a locked stone while it is still seen |
 | `skip_alone_s=N\|null` | null | 6 | retry the only skipped stone after N s |
+| `carry_wall_clamp=true\|false` | false | true | carry detour never placed against a wall |
 | `min_duty=X` | config | config | drive floor 0..1 (firmware must report `min_duty`) |
 | `color_alias={}` | config | config | practice field: turn colour aliasing off |
 | any other `autonomy` key | | | e.g. `cruise=0.25`, `servo_timeout_s=3`, `timeouts_s={"ALIGN": 8}` |
@@ -143,7 +144,7 @@ V1 with only the pile fix: `autonomy.py <ESP_IP> --camera 1 --record --set visio
 Compare V1/V2 vision on recorded runs: `evidence/v2-replay/compare_v1_v2.py RUN[,RUN] OUT_PREFIX` (needs the
 run's empty-field reference). Planner in the simulator: `sim_bench.py [--v2] [--seeds 6] [--seconds 180]
 [--physics charged|low-battery|ideal] [--set KEY=VALUE] [--config PATH]` (it never runs vision, so it only
-compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (233 pass).
+compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (239 pass).
 
 ## Running V3 (gripper camera), end to end
 

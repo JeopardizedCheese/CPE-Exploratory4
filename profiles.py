@@ -29,6 +29,9 @@ V2 switches (each can be turned back individually with --set, e.g. --set vision.
   autonomy.skip_alone_s   6          after a failed attempt a stone is skipped for skip_s (25 s); when
                                      it is the only stone on offer, retry it after this many seconds
                                      instead of parking.
+  autonomy.carry_wall_clamp true     while carrying, a detour around another zone that would run along
+                                     a wall passes on the zone's other side (else is pulled in to the
+                                     wall margin). The zone centre itself is never moved.
 vision.pile_outermost and vision.pile_regions need pile_edge_pixels "nearest" (ignored with "legacy").
 
 V3 = V2 + one switch (turn it off with --set grip_check=false; V1 + grip check = autonomy.py
@@ -43,15 +46,15 @@ V3 = V2 + one switch (turn it off with --set grip_check=false; V1 + grip check =
 PROFILES = {
     'v1': {
         'vision': {'pile_edge_pixels': 'legacy', 'pile_outermost': False, 'pile_regions': False},
-        'autonomy': {'commit_target': False, 'skip_alone_s': None, 'grip_check': False},
+        'autonomy': {'commit_target': False, 'skip_alone_s': None, 'carry_wall_clamp': False, 'grip_check': False},
     },
     'v2': {
         'vision': {'pile_edge_pixels': 'nearest', 'pile_outermost': True, 'pile_regions': True},
-        'autonomy': {'commit_target': True, 'skip_alone_s': 6, 'grip_check': False},
+        'autonomy': {'commit_target': True, 'skip_alone_s': 6, 'carry_wall_clamp': True, 'grip_check': False},
     },
     'v3': {
         'vision': {'pile_edge_pixels': 'nearest', 'pile_outermost': True, 'pile_regions': True},
-        'autonomy': {'commit_target': True, 'skip_alone_s': 6, 'grip_check': True},
+        'autonomy': {'commit_target': True, 'skip_alone_s': 6, 'carry_wall_clamp': True, 'grip_check': True},
     },
 }
 
