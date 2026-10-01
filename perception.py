@@ -100,11 +100,16 @@ class Perception:
         for o in observations:
             x, y = self.stone_to_floor(o.x * self.per_px, o.y * self.per_px)
             if not o.held:   # sticky target ghosts are not fresh obstacle/jaw evidence
-                seen.append({'color': o.color, 'x': round(x, 1), 'y': round(y, 1)})
+                seen.append({'color': o.color, 'x': round(x, 1), 'y': round(y, 1),
+                             'radius_mm': round(o.radius_mm, 1) if o.radius_mm else 0.0})
             if status == 'ok' and o.stable and o.isolated:
-                target = {'color': o.color, 'x': round(x, 1), 'y': round(y, 1), 'confidence': o.confidence}
+                target = {'color': o.color, 'x': round(x, 1), 'y': round(y, 1),
+                          'confidence': o.confidence,
+                          'radius_mm': round(o.radius_mm, 1) if o.radius_mm else 0.0}
                 if o.approach_deg is not None:
                     target['approach_deg'] = o.approach_deg
+                if o.approach_options:
+                    target['approach_options'] = list(o.approach_options)
                 targets.append(target)
         jaws = self._jaw_observations(frame, pose) if status == 'ok' and pose else []
         capture = None

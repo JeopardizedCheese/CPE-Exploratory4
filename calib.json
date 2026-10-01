@@ -9,7 +9,13 @@
     "grip_open": 0,
     "grip_close": 70,
     "approach_max_side_mm": 11,
-    "min_duty": 0.65
+    "min_duty": 0.65,
+    "pile_grid_mm": 50,
+    "pile_obstacle_margin_mm": 20,
+    "pile_default_obstacle_radius_mm": 20,
+    "pick_retreat_mm": 120,
+    "pick_retreat_max_mm": 320,
+    "pick_retreat_pulse_mm": 40
   },
   "arena": {
     "size_mm": [
@@ -989,6 +995,11 @@
     "max_motion_px": 8,
     "min_obstacle_px": 12,
     "max_gem_extent_mm": 70,
+    "region_min_mm2": 150,
+    "region_max_mm2": 2000,
+    "pile_seed_min_radius_mm": 8,
+    "pile_seed_min_separation_mm": 20,
+    "pile_seed_max_saddle_ratio": 0.82,
     "pile_mode": true,
     "sticky_frames": 5,
     "gripper_width_mm": 60,

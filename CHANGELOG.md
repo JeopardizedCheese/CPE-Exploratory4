@@ -1,5 +1,21 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01: crowded-pile selection and safe pickup retreat
+
+**EN**
+- Split oversized same-colour blobs with distance-transform peaks and watershed only when the peaks have a clear saddle and each resulting region has plausible area/extent; ambiguous blobs remain unpickable.
+- Rank all clear jaw-entry headings by approach flexibility, confidence, route length and recent failure history. Plan around observed pile/stone extents using a bounded A* grid and a circular robot sweep envelope for staging, parking and carry routes; stop with a specific reason when no route is available.
+- After the close servo reaches its configured angle, reverse in camera-measured pulses on the entry heading (at least 120 mm, up to 320 mm) and permit a turn only when the observed body sweep is clear. A blocked retreat stays stopped.
+- Keep geometry provisional: jaw lane 60×80 mm, grip offset `[197, -4]` mm and front footprint 235 mm still require hardware measurement. The 20 mm fallback obstacle radius follows the simulator's nominal 40 mm stone, not a field measurement.
+- No automated tests, complete ESP32 build, calibration session or robot trial was run for this update.
+
+**TH**
+- แยก blob ใหญ่สีเดียวกันด้วย distance-transform peaks และ watershed เฉพาะเมื่อยอดกับร่องแบ่งชัดและขนาดแต่ละส่วนสมเหตุผล; blob ที่กำกวมจะไม่ถูกเลือกคีบ
+- จัดอันดับทุกทิศทางเข้าที่ผ่านตามจำนวนทางเข้า confidence ระยะ route และประวัติที่คีบพลาด วางทาง A* รอบขนาดกอง/หินที่เห็น โดยขยายสิ่งกีดขวางด้วยวงกวาดตัวหุ่นแบบวงกลม ใช้กับทางไปจุดเตรียม จุดจอด และขณะขนหิน; หากไม่มีทางจะหยุดพร้อม reason
+- หลัง servo ปิดถึงมุมที่ตั้งไว้ จะถอยเป็นช่วงที่วัดจากกล้องตาม heading เดิม (อย่างน้อย 120 มม. สูงสุด 320 มม.) และหมุนต่อเมื่อวงกวาดจากภาพไม่มีสิ่งกีดขวาง ถ้าทางถอยติดจะหยุด
+- เรขาคณิตยังเป็นค่าตั้งต้น: ช่องปากคีบ 60×80 มม., grip offset `[197, -4]` มม. และ footprint หน้า 235 มม. ต้องวัดกับหุ่นจริง ส่วนรัศมีสำรอง 20 มม. อิงหิน 40 มม. ในตัวจำลอง ไม่ใช่ค่าที่วัดสนาม
+- อัปเดตนี้ยังไม่ได้รันเทสต์อัตโนมัติ สร้างเฟิร์มแวร์ ESP32 เต็มชุด ทำ calibration หรือทดลองกับหุ่นจริง
+
 ## 2026-09-30: changing fields and iPhone hotspot preparation
 
 **EN**

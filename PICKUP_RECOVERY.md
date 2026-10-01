@@ -1,9 +1,39 @@
-# Pickup and wall recovery: 30 September 2026
+# Pickup and wall recovery: 1 October 2026
 
 This update addresses pushing a reachable stone instead of closing the jaws,
 turning into a nearby stone, and recovery blocked by detections of the robot itself.
 The gripper close angle is **70 degrees**, in the planner, simulator, firmware
 source and firmware-check tool. Opening remains 0 degrees.
+
+## 1 October: crowded floor-pile additions
+
+`vision.py` now attempts to split a connected same-colour region only when its
+distance-transform peaks have a clear saddle and the resulting basins fit the
+existing area/extent limits. It reports every passing jaw-entry heading; a blob
+with no defensible split or clear 60×80 mm jaw lane remains unpickable.
+
+The planner ranks those candidates using confidence, number of passing headings,
+route distance and recent failed attempts. `pile_navigation.py` routes around
+observed bounding circles inflated by the robot's full circumscribed footprint
+(shifted by the configured axle offset) and a 20 mm pile-planning margin. It
+applies this route to staging and carry motion. If no path exists inside the
+conservative field bounds, the planner stops
+with a route reason. This circle uses the provisional 235 mm front and 75 mm side
+footprint values, so it can reject a passage the physical robot might fit through.
+
+After the configured close servo position is reported, `PICK_RETREAT` reverses
+on the entry heading in camera-measured pulses: 120 mm minimum, up to 320 mm
+while checking whether a full turn is clear. The robot does not turn or carry if
+the return path or turning sweep is blocked. The gripper has no force sensor, so
+the commanded 70-degree angle still cannot prove that a stone is held.
+
+These additions use the current configuration values only as provisional inputs:
+the recorded `[197, -4]` mm grip offset, 235 mm front footprint and 60×80 mm jaw
+lane still need measurement on the assembled robot. The 20 mm default obstacle
+radius is the simulator's nominal radius (`STONE_R=20`), not a physical stone
+measurement. The 20 mm watershed seed spacing is likewise derived from that
+simulator model. The run used one overhead camera and has no wheel encoders or
+gyro, so all retreat distance comes from calibrated camera pose.
 
 ## What the supplied recordings show
 
@@ -108,7 +138,9 @@ The reported servo angle is commanded position; there is no grasp-force sensor.
 
 ## Software validation
 
-Validation: **189 tests pass** with `python -m unittest discover -s tests`.
+For the 30 September pickup/wall changes, **189 tests passed** with
+`python -m unittest discover -s tests`. Those results predate the 1 October pile
+additions; no automated tests or build were run for those changes.
 Regressions cover capture at the jaw
 base, coasting, moved stones, mismatched servo angles, pulse expiry, blocked
 retreats, mask/exclusion interactions and recorded wall-obstacle positions.

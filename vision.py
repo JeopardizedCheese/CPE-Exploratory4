@@ -41,6 +41,8 @@ class Observation:
     reason: str = ''            # explains color rejection or why pickup is withheld
     bbox: tuple = None          # rectified-pixel (x, y, width, height)
     ambiguous_fraction: float = 0.0
+    radius_mm: float = 0.0       # conservative equivalent obstacle radius (0 when scale is unknown)
+    approach_options: tuple = () # all clear headings, most outward first
 
 
 class Detector:
@@ -207,7 +209,12 @@ class Detector:
                     f"votes={votes}"
                 )
 
-            if not plausible:
+            oversized_pile = (pile and
+                               (area * scale * scale > self.options.get('region_max_mm2', area_limits['max'])
+                                or max(bw, bh) * scale > self.options.get('max_gem_extent_mm', 70)))
+            if oversized_pile:
+                reason = 'merged_pile'
+            elif not plausible:
                 reason = 'size_out_of_range'
             elif evidence < self.options.get('min_color_fraction', .3):
                 reason = 'overlapping_color_ranges' if ambiguity > .2 else 'insufficient_color'
@@ -227,30 +234,19 @@ class Detector:
                 other[:, -1] = True
             distance = cv2.distanceTransform(np.uint8(~other) * 255, cv2.DIST_L2, 5)
             clearance = float(distance[component].min()) > gap
+            radius_mm = .5 * math.hypot(bw, bh) * scale if metric else 0.0
             observations.append(Observation(float(x), float(y), cid, round(evidence*dominance, 3),
                                             area*scale*scale, clearance and cid != 0,
                                             candidate_color=candidate_color, reason=reason,
-                                            bbox=(bx, by, bw, bh), ambiguous_fraction=round(float(ambiguity), 3)))
+                                            bbox=(bx, by, bw, bh), ambiguous_fraction=round(float(ambiguity), 3),
+                                            radius_mm=radius_mm))
             if pile and not observations[-1].isolated:
-                if cid != 0:
-                    # one known stone with something nearby: any single free side is enough
-                    pm = int(np.ceil(length_px + width_px)) + 2
-                    py0, py1 = max(0, by - pm), min(h, by + bh + pm)
-                    px0, px1 = max(0, bx - pm), min(w, bx + bw + pm)
-                    pwin = (slice(py0, py1), slice(px0, px1))
-                    own = labels[pwin] == label
-                    b = blocked[pwin]
-                    lx, ly = x - px0, y - py0
-                    approach = _find_approach(b, own, lx, ly, _away_from_nearest(b, own, lx, ly),
-                                              width_px, length_px, np.pi, start_px)
-                    if approach is not None:
-                        observations[-1].isolated = True
-                        observations[-1].approach_deg = approach
-                elif max(votes.values(), default=0) >= region_min_px:
-                    for rx, ry, rc, conf, rarea, approach in directional_candidates(
+                if max(votes.values(), default=0) >= region_min_px:
+                    for ox, oy, oc, cf, ra, heading, radius_mm, options in directional_candidates(
                             labels, label, (bx, by, bw, bh), color_masks, votable, blocked,
                             scale, self.options):
-                        observations.append(Observation(rx, ry, rc, conf, rarea, True, False, approach))
+                        observations.append(Observation(ox, oy, oc, cf, ra, True, False, heading,
+                                                        radius_mm=radius_mm, approach_options=tuple(options)))
         used = set()
         new_counts = []
         for obs in observations:
@@ -299,18 +295,107 @@ def _angle_gap(a, b):
     return abs(np.arctan2(np.sin(a - b), np.cos(a - b)))
 
 
-def _find_approach(blocked, own, cx, cy, preferred, width_px, length_px, max_turn, start_px=0.0):
-    """Free outward direction closest to preferred, or None. Returns robot heading in degrees."""
+def _find_approaches(blocked, own, cx, cy, preferred, width_px, length_px, max_turn, start_px=0.0):
+    """Return every clear robot heading, ordered from most outward to least outward."""
     steps = 16
     options = sorted((preferred + k * 2 * np.pi / steps for k in range(steps)),
                      key=lambda a: _angle_gap(a, preferred))
+    headings = []
     for direction in options:
         if _angle_gap(direction, preferred) > max_turn + 1e-6:
             break
         if _corridor_free(blocked, own, cx, cy, direction, width_px, length_px, start_px):
             heading = np.degrees(np.arctan2(-np.sin(direction), -np.cos(direction)))
-            return round(float(heading), 1)
-    return None
+            heading = round(float(heading), 1)
+            if heading not in headings:
+                headings.append(heading)
+    return headings
+
+
+def _find_approach(blocked, own, cx, cy, preferred, width_px, length_px, max_turn, start_px=0.0):
+    """Compatibility helper: the first clear robot heading, or None."""
+    headings = _find_approaches(blocked, own, cx, cy, preferred, width_px, length_px,
+                                max_turn, start_px)
+    return headings[0] if headings else None
+
+
+def _split_touching_regions(mask, scale, options):
+    """Split oversized same-colour blobs only when distance peaks have a clear saddle."""
+    min_area = options.get('region_min_mm2', 150)
+    max_area = options.get('region_max_mm2', 2000)
+    max_extent = options.get('max_gem_extent_mm', 70)
+    min_peak = max(4.0, float(options.get('pile_seed_min_radius_mm', 8.0))) / scale
+    min_separation = max(8.0, float(options.get('pile_seed_min_separation_mm', 20.0))) / scale
+    saddle_ratio = float(options.get('pile_seed_max_saddle_ratio', .82))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(np.uint8(mask), 8)
+    result = []
+    for label in range(1, count):
+        component = labels == label
+        area_mm2 = stats[label, cv2.CC_STAT_AREA] * scale * scale
+        width = stats[label, cv2.CC_STAT_WIDTH]
+        height = stats[label, cv2.CC_STAT_HEIGHT]
+        extent = max(width, height) * scale
+        distance = cv2.distanceTransform(np.uint8(component) * 255, cv2.DIST_L2, 5)
+        peak_kernel_size = max(3, int(math.ceil(2 * min_separation + 1)))
+        if peak_kernel_size % 2 == 0:
+            peak_kernel_size += 1
+        peak_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                                (peak_kernel_size, peak_kernel_size))
+        local_max = ((distance >= cv2.dilate(distance, peak_kernel) - 1e-4)
+                     & (distance >= min_peak) & component)
+        peak_count, peak_labels, _, _ = cv2.connectedComponentsWithStats(
+            np.uint8(local_max), 8)
+        peaks = []
+        for peak_id in range(1, peak_count):
+            pixels = peak_labels == peak_id
+            ys, xs = np.nonzero(pixels)
+            if not len(xs):
+                continue
+            values = distance[ys, xs]
+            k = int(np.argmax(values))
+            peaks.append((float(xs[k]), float(ys[k]), float(values[k])))
+        peaks.sort(key=lambda p: p[2], reverse=True)
+        separated = []
+        for peak in peaks:
+            if any(math.hypot(peak[0]-other[0], peak[1]-other[1]) < min_separation
+                   for other in separated):
+                continue
+            clear_of_all = True
+            for other in separated:
+                dx, dy = other[0]-peak[0], other[1]-peak[1]
+                samples = max(2, int(math.hypot(dx, dy)))
+                values = [distance[int(round(peak[1]+dy*i/samples)),
+                                   int(round(peak[0]+dx*i/samples))]
+                          for i in range(1, samples)]
+                pair_valley = min(values, default=min(peak[2], other[2]))
+                if pair_valley > saddle_ratio * min(peak[2], other[2]):
+                    clear_of_all = False
+                    break
+            if clear_of_all:
+                separated.append(peak)
+        if len(separated) < 2:
+            if min_area <= area_mm2 <= max_area and extent <= max_extent:
+                result.append((component, area_mm2, extent, 1.0))
+            continue
+
+        markers = np.zeros(component.shape, np.int32)
+        markers[~component] = 1
+        for seed, (cx, cy, _) in enumerate(separated, 2):
+            x, y = int(round(cx)), int(round(cy))
+            cv2.circle(markers, (x, y), 1, seed, -1)
+        topography = 255 - np.uint8(np.clip(distance / max(1.0, float(distance.max())) * 255, 0, 255))
+        watershed = cv2.watershed(cv2.cvtColor(topography, cv2.COLOR_GRAY2BGR), markers)
+        for seed, peak in enumerate(separated, 2):
+            region = (watershed == seed) & component
+            ys, xs = np.nonzero(region)
+            if not len(xs):
+                continue
+            region_area = len(xs) * scale * scale
+            region_extent = max(xs.max()-xs.min()+1, ys.max()-ys.min()+1) * scale
+            if min_area <= region_area <= max_area and region_extent <= max_extent:
+                quality = min(1.0, peak[2] / max(min_peak, 1e-6))
+                result.append((region, region_area, region_extent, quality))
+    return result
 
 
 def _away_from_nearest(blocked, own, cx, cy):
@@ -326,7 +411,7 @@ def directional_candidates(labels, label, bbox, color_masks, votable, blocked, s
 
     Splits the blob into single-colour regions, keeps regions that look like one stone,
     and accepts a region if a gripper-wide corridor pointing away from the pile is free.
-    Returns [(x_px, y_px, color, confidence, area_mm2, approach_deg)].
+    Returns candidate centres, confidence, approach heading/options, and radius in mm.
     """
     width_px = options.get('gripper_width_mm', 60) / scale
     length_px = options.get('approach_length_mm', 80) / scale
@@ -359,18 +444,15 @@ def directional_candidates(labels, label, bbox, color_masks, votable, blocked, s
             if other_id != cid:
                 others |= m
         closed = cv2.morphologyEx(region_all.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
-        n, labels, stats, cents = cv2.connectedComponentsWithStats(closed)
-        for r in range(1, n):
-            area_mm2 = stats[r, cv2.CC_STAT_AREA] * scale * scale
-            extent = max(stats[r, cv2.CC_STAT_WIDTH], stats[r, cv2.CC_STAT_HEIGHT]) * scale
-            if not (min_area <= area_mm2 <= max_area) or extent > max_extent:
+        for region, area_mm2, extent, split_quality in _split_touching_regions(closed, scale, options):
+            ys, xs = np.nonzero(region)
+            if not len(xs):
                 continue
-            cx, cy = cents[r]
-            region = labels == r
+            cx, cy = float(xs.mean()), float(ys.mean())
             circle = np.zeros(component.shape, np.uint8)
             cv2.circle(circle, (int(round(cx)), int(round(cy))), int(round(own_radius)), 1, -1)
             near = circle > 0
-            own = component & ((near & ~others) | (cv2.dilate(region.astype(np.uint8), kernel) > 0))
+            own = component & (cv2.dilate(region.astype(np.uint8), kernel) > 0)
             votes_here = np.count_nonzero(region & region_all)
             dominance = votes_here / max(1, votes_here + np.count_nonzero(others & near))
             fraction = votes_here / max(1, np.count_nonzero(own))
@@ -379,10 +461,13 @@ def directional_candidates(labels, label, bbox, color_masks, votable, blocked, s
             outward = np.arctan2(cy - by, cx - bx)
             if np.hypot(cx - bx, cy - by) < 1:
                 outward = _away_from_nearest(blocked, own, cx, cy)
-            approach = _find_approach(blocked, own, cx, cy, outward, width_px, length_px, max_turn, start_px)
-            if approach is not None:
-                found.append((float(cx + x0), float(cy + y0), cid, round(fraction * dominance, 3),
-                              area_mm2, approach))
+            approaches = _find_approaches(blocked, own, cx, cy, outward, width_px, length_px,
+                                          max_turn, start_px)
+            if approaches:
+                radius_mm = .5 * math.hypot(xs.max()-xs.min()+1, ys.max()-ys.min()+1) * scale
+                confidence = round(fraction * dominance * split_quality, 3)
+                found.append((float(cx + x0), float(cy + y0), cid, confidence, area_mm2,
+                              approaches[0], radius_mm, approaches))
     return found
 
 
@@ -390,7 +475,9 @@ def make_packet(observations, cfg, seq, session, status, timestamp):
     scale = float(cfg.get('arena', {}).get('mm_per_px', 2))
     targets = [{'color': o.color, 'x': round(o.x*scale, 1), 'y': round(o.y*scale, 1),
                 'confidence': o.confidence,
-                **({'approach_deg': o.approach_deg} if o.approach_deg is not None else {})}
+                **({'approach_deg': o.approach_deg} if o.approach_deg is not None else {}),
+                **({'approach_options': list(o.approach_options)} if o.approach_options else {}),
+                **({'radius_mm': round(o.radius_mm, 1)} if o.radius_mm else {})}
                for o in observations if o.stable and o.isolated]
     targets = sorted(targets, key=lambda g: g['confidence'], reverse=True)[:8] if status == 'ok' else []
     return {'version': 2, 'session': session, 'seq': seq, 't': timestamp, 'ttl_ms': 300,
