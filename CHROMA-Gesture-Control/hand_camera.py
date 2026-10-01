@@ -5,6 +5,15 @@ import time
 from gesture_logic import Hand
 
 
+def operator_side(category_name):
+    """MediaPipe handedness of our mirrored frame -> the operator's real hand ('L' / 'R').
+
+    On this frame MediaPipe's label comes out reversed (raising the left hand read "Right",
+    seen on the team's webcam 2026-10-01), so it is swapped here.
+    """
+    return {'Left': 'R', 'Right': 'L'}.get(category_name, '')
+
+
 class CameraWorker(threading.Thread):
     """Publishes (mirrored frame, hands, error). With a classifier each hand gets a command label."""
     def __init__(self, camera, model, classifier=None):
@@ -63,10 +72,9 @@ class CameraWorker(threading.Thread):
                         pose, score, candidate = 'NONE', None, ''
                         if self.classifier is not None:
                             pose, score, candidate = self.classifier.predict(features)
-                        # The frame is mirrored, as MediaPipe's handedness expects.
                         side = ''
                         if i < len(result.handedness) and result.handedness[i]:
-                            side = result.handedness[i][0].category_name[:1]
+                            side = operator_side(result.handedness[i][0].category_name)
                         palm = [marks[k] for k in (0, 5, 9, 13, 17)]
                         hands.append(Hand(captured, pose, sum(p.x for p in palm)/5, sum(p.y for p in palm)/5,
                                           tuple(features), score, candidate, side,

@@ -1,4 +1,4 @@
-"""CHROMA gesture drive: either hand shows a command (trained model). Default: preview, no network."""
+"""ERA-ONE gesture drive: either hand shows a command (trained model). Default: preview, no network."""
 import argparse
 from pathlib import Path
 import time
@@ -9,7 +9,7 @@ from gesture_model import LABELS, GestureModel, newest_model
 from hand_camera import CameraWorker
 
 ROOT = Path(__file__).resolve().parent
-WINDOW = 'CHROMA gesture drive'
+WINDOW = 'ERA-ONE gesture drive'
 
 
 def main(argv=None):

@@ -311,6 +311,14 @@ class SessionTests(unittest.TestCase):
                 GestureSession(self.control, self.link, min_duty=floor)
 
 
+class HandSideTests(unittest.TestCase):
+    def test_mediapipe_label_is_swapped_to_the_operators_hand(self):
+        from hand_camera import operator_side
+        self.assertEqual(operator_side('Left'), 'R')
+        self.assertEqual(operator_side('Right'), 'L')
+        self.assertEqual(operator_side('?'), '')
+
+
 @unittest.skipUnless(importlib.util.find_spec('cv2'), 'Install requirements for UI smoke tests')
 class AppTests(unittest.TestCase):
     def run_app(self, argv, keys):

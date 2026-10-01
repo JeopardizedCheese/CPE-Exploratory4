@@ -1,4 +1,6 @@
 """Drawing for the gesture apps: the driver dashboard and shared helpers (OpenCV only)."""
+from functools import lru_cache
+
 import cv2
 import numpy as np
 
@@ -9,6 +11,13 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 BG, PANEL, EDGE = (24, 20, 18), (40, 34, 30), (70, 62, 56)
 WHITE, MUTED, DIM = (240, 238, 234), (160, 150, 140), (95, 88, 82)
 GREEN, RED, AMBER, CYAN = (110, 210, 90), (80, 80, 235), (40, 175, 250), (220, 200, 60)
+BRAND, ELEPHANT = 'ERA-ONE', '\U0001F418'
+# Colour emoji fonts first (Windows, macOS, Linux), then a plain one that is tinted.
+EMOJI_FONTS = ('C:/Windows/Fonts/seguiemj.ttf', '/System/Library/Fonts/Apple Color Emoji.ttc',
+               '/usr/share/fonts/google-noto-color-emoji-fonts/NotoColorEmoji.ttf',
+               '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf',
+               '/usr/share/fonts/google-noto-emoji-fonts/NotoEmoji-Regular.ttf',
+               '/usr/share/fonts/truetype/noto/NotoEmoji-Regular.ttf')
 BONES = ((0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11),
          (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (17, 18), (18, 19), (19, 20), (0, 17))
 
@@ -21,6 +30,54 @@ def kind_color(command):
     if command in ('STOP', 'CONFLICT'):
         return RED
     return MUTED
+
+
+@lru_cache(maxsize=8)
+def emoji(char, height, tint=CYAN):
+    """BGRA picture of one emoji, `height` px tall, or None when no emoji font is installed."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return None
+    for path in EMOJI_FONTS:
+        for size in (109, 160, 4*height):       # colour bitmap fonts only exist at fixed sizes
+            try:
+                font = ImageFont.truetype(path, size)
+            except OSError:
+                continue
+            canvas = Image.new('RGBA', (2*size, 2*size), (0, 0, 0, 0))
+            ImageDraw.Draw(canvas).text((size//4, size//4), char, font=font, embedded_color=True,
+                                        fill=(tint[2], tint[1], tint[0], 255))
+            box = canvas.getbbox()
+            if box is None:
+                continue                         # font present but cannot draw it (e.g. COLRv1)
+            glyph = canvas.crop(box)
+            glyph = glyph.resize((max(1, round(glyph.width * height / glyph.height)), height), Image.LANCZOS)
+            rgba = np.array(glyph)
+            return np.dstack([rgba[..., 2::-1], rgba[..., 3]])
+    return None
+
+
+def paste(img, bgra, x, y):
+    h, w = bgra.shape[:2]
+    h, w = min(h, img.shape[0] - y), min(w, img.shape[1] - x)
+    if h <= 0 or w <= 0:
+        return
+    alpha = bgra[:h, :w, 3:4] / 255.
+    region = img[y:y+h, x:x+w]
+    region[:] = (bgra[:h, :w, :3] * alpha + region * (1 - alpha)).astype(np.uint8)
+
+
+def brand(img, subtitle):
+    """'ERA-ONE <elephant> SUBTITLE' at the top left; returns the x where it ends."""
+    put(img, BRAND, (16, 31), .85, CYAN, 2)
+    x = 16 + cv2.getTextSize(BRAND, FONT, .85, 2)[0][0] + 10
+    icon = emoji(ELEPHANT, 30)
+    if icon is not None:
+        paste(img, icon, x, 8)
+        x += icon.shape[1] + 10
+    put(img, subtitle, (x, 31), .6, WHITE)
+    return x + cv2.getTextSize(subtitle, FONT, .6, 1)[0][0]
 
 
 def put(img, text, org, scale=.5, color=WHITE, thick=1):
@@ -109,13 +166,12 @@ def render_drive(frame, hands, control, session, wheels, now, *, mode='PREVIEW',
     moving = wheels != (0., 0.)
 
     # top bar
-    put(img, 'CHROMA', (16, 31), .85, CYAN, 2)
-    put(img, 'GESTURE DRIVE', (138, 31), .6, WHITE)
+    bx = brand(img, 'GESTURE DRIVE') + 24
     badge = {'LIVE': RED, 'DEMO': AMBER}.get(mode, CYAN)
     btext = f'{mode} {target}'.strip()
     (bw, _), _ = cv2.getTextSize(btext, FONT, .5, 1)
-    cv2.rectangle(img, (330, 12), (330 + bw + 20, 38), badge, -1)
-    put(img, btext, (340, 30), .5, (20, 20, 20))
+    cv2.rectangle(img, (bx, 12), (bx + bw + 20, 38), badge, -1)
+    put(img, btext, (bx + 10, 30), .5, (20, 20, 20))
     put(img, 'G start   SPACE/X stop   +/- speed   ESC quit', (W - 470, 31), .5, MUTED)
 
     # camera with hands

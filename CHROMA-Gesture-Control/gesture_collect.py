@@ -17,7 +17,7 @@ from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABEL_SET, LAB
                            SUGGESTED_POSE, GestureModel, newest_model)
 
 ROOT = Path(__file__).resolve().parent
-WINDOW = 'CHROMA gesture trainer'
+WINDOW = 'ERA-ONE gesture trainer'
 MIN_SAMPLES = 30          # per command, per hand, per split: what gesture_train.py requires
 PREPARE_S, SAMPLE_GAP_S = 2., .2
 
@@ -100,16 +100,15 @@ def next_missing(counts, target):
 def render_collect(frame, hands, s, now):
     """Trainer screen (1280 x 720). s: dict with the trainer state."""
     import cv2
-    from gesture_ui import (AMBER, BG, CYAN, DIM, GREEN, MUTED, RED, WHITE, bar, card, draw_hand,
+    from gesture_ui import (AMBER, BG, CYAN, DIM, GREEN, MUTED, RED, WHITE, bar, brand, card, draw_hand,
                             place_camera, put, put_center)
     img = np.full((720, 1280, 3), BG, np.uint8)
     split_color = {'train': GREEN, 'validation': AMBER, 'test': RED}[s['split']]
-    put(img, 'CHROMA', (16, 31), .85, CYAN, 2)
-    put(img, 'GESTURE TRAINER', (138, 31), .6, WHITE)
-    cv2.rectangle(img, (330, 12), (330 + 150, 38), split_color, -1)
-    put_center(img, s['split'].upper(), 405, 30, .55, (20, 20, 20), 1)
+    bx = brand(img, 'GESTURE TRAINER') + 24
+    cv2.rectangle(img, (bx, 12), (bx + 130, 38), split_color, -1)
+    put_center(img, s['split'].upper(), bx + 65, 30, .55, (20, 20, 20), 1)
     put(img, f'session {s["session"]}   ({s["sessions"][s["split"]]} {s["split"]} session(s) on disk)'
-        '   landmarks only, no video', (496, 31), .45, MUTED)
+        '   landmarks only', (bx + 146, 31), .45, MUTED)
 
     cx0, cy0, cw, ch = 16, 52, 800, 600
     place_camera(img, frame, cx0, cy0, cw, ch, s['error'])

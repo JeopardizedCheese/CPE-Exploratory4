@@ -1,5 +1,15 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01 (night, later): gesture UI: ERA-ONE name, left/right hand tag fixed
+
+**EN**
+- Both gesture screens and window titles say **ERA-ONE** with an elephant 🐘 (drawn with an emoji font through Pillow: colour on Windows/macOS, a tinted outline on this Linux laptop, text only if no emoji font exists).
+- The L/R tag on each hand (driver dashboard, trainer warning) was reversed on the team's webcam: raising the left hand showed R. MediaPipe's handedness is now swapped (`hand_camera.operator_side`). Only the tag changes: commands, recorded data and the screen picture are unaffected.
+
+**TH**
+- หน้าจอ gesture ทั้งสองและชื่อหน้าต่างเปลี่ยนเป็น **ERA-ONE** พร้อมช้าง 🐘 (วาดด้วยฟอนต์อีโมจิผ่าน Pillow: สีบน Windows/macOS, เส้นขอบสีเดียวบนโน้ตบุ๊ก Linux นี้, ถ้าไม่มีฟอนต์อีโมจิจะแสดงแค่ตัวหนังสือ)
+- ป้าย L/R ของแต่ละมือ (หน้าจอขับ, คำเตือนในโปรแกรมเก็บข้อมูล) กลับข้างบนเว็บแคมของทีม: ยกมือซ้ายแล้วขึ้น R ตอนนี้สลับค่าจาก MediaPipe แล้ว (`hand_camera.operator_side`) เปลี่ยนแค่ป้าย คำสั่ง ข้อมูลที่อัดไว้ และภาพบนจอไม่เปลี่ยน
+
 ## 2026-10-01 (night): gesture control rebuilt: two hands, one trained command set
 
 **EN**
