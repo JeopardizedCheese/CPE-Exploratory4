@@ -28,6 +28,7 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 - The five `runs/autonomy/20260929-07*/video.mp4` were unfinalized; recovered copies are `video_recovered.avi` in the same folders (user's laptop only). Trace rows map to frames via `video_frame`.
 
 - **2026-10-01, later: mini practice field.** Fellow students built a ~1650 x 1100 mm field in the common room with only a red and a green zone and an off-centre camera. Config `minifield/calib_minifield.json`, steps in `minifield/README.md` (camera height/floor point must be measured; grip offset 140 is an estimate). New keys: `zone_colors` (fields with fewer zones) and `autonomy.color_alias` (deliver zone-less colours to another zone). Arm remounted: firmware `config.h` servo pin 33, swapped pulse widths, close 100 (repo matches the user's board; needs a flash); `calib.json` `grip_close` set to 100 to match (uncommitted working copy). The user tunes duty (~0.65; the practice floor has less friction).
+- **2026-10-01, gesture: PR #3 merged locally** (`ad770db`, not pushed). The one-hand lever `CHROMA-Gesture-Control/lever_control.py` replaces the two-hand system (kept as a backup; its core files are imported by the lever and must stay). Added `+`/`-` speed keys and `--min-duty`. Software-tested only. Gesture tests: `cd CHROMA-Gesture-Control && ./.venv-gesture/bin/python -m unittest discover -s tests` (75 pass).
 
 ## Open work, in the user's priority order
 

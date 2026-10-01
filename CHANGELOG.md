@@ -1,5 +1,21 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01: one-hand virtual lever is the gesture system (PR #3)
+
+**EN**
+- Merged PR #3 (`codex/gesture-virtual-lever-v1`), no conflicts: `CHROMA-Gesture-Control/lever_control.py`, a one-hand lever. Move a fist to drive or turn; thumb up, then move the hand up/down to close/open the gripper; open palm, a lost hand or two hands stop the wheels. Uses MediaPipe's built-in gestures (no training).
+- The lever is now the gesture system. The two-hand system (`gesture_control.py`, data collection, MLP training) stays in the folder as a backup; its docs carry a "superseded" note. `gesture_control.py`, `gesture_logic.py`, `gesture_model.py` and `models/` must stay: the lever uses their camera reader, UDP protocol and MediaPipe model.
+- New in the lever: `+` / `-` change the speed by 0.05 (0.02–1.00) at once, like `teleop.py`. `--min-duty X` sends the drive floor with every drive packet, like `autonomy.py --set min_duty=X`; without it the firmware's 0.71 is used as before. With `--min-duty`, firmware that does not report `min_duty` stops control. The panel shows the PWM and floor in use.
+- Fixed the README's stale gripper angles (the firmware decides: open 0, close 100) and the `.gitignore` entry in `MANIFEST.sha256`.
+- Tests: gesture 75 pass (68 from the PR + 7 new), root 176 pass. Software only: no webcam, robot or motors used.
+
+**TH**
+- รวม PR #3 (`codex/gesture-virtual-lever-v1`) ไม่มี conflict: `CHROMA-Gesture-Control/lever_control.py` คันโยกมือเดียว กำมือแล้วโยกเพื่อขับ/หมุน ยกนิ้วโป้งแล้วโยกขึ้น/ลงเพื่อหนีบ/ปล่อย แบมือ มือหาย หรือเห็นสองมือ ล้อหยุด ใช้ท่ามือสำเร็จรูปของ MediaPipe (ไม่ต้องเทรน)
+- คันโยกเป็นระบบควบคุมด้วยมือหลักแล้ว ระบบสองมือ (`gesture_control.py`, การเก็บข้อมูล, การเทรน MLP) ยังอยู่ในโฟลเดอร์เป็นสำรอง เอกสารเดิมมีป้าย "เลิกใช้แล้ว" ห้ามลบ `gesture_control.py`, `gesture_logic.py`, `gesture_model.py` และ `models/` เพราะคันโยกใช้ตัวอ่านกล้อง โปรโตคอล UDP และโมเดล MediaPipe จากไฟล์เหล่านี้
+- เพิ่มในคันโยก: `+` / `-` เพิ่ม/ลดความเร็วทีละ 0.05 (0.02–1.00) มีผลทันที เหมือน `teleop.py` และ `--min-duty X` ส่ง floor ไปกับทุก drive packet เหมือน `autonomy.py --set min_duty=X` ถ้าไม่ใส่ใช้ 0.71 ของ firmware เหมือนเดิม ถ้าใส่ `--min-duty` แต่ firmware ไม่รายงาน `min_duty` โปรแกรมหยุดเอง หน้าจอแสดง PWM และ floor ที่ใช้
+- แก้มุมก้ามที่ล้าสมัยใน README (firmware เป็นตัวกำหนด: เปิด 0 หนีบ 100) และรายการ `.gitignore` ใน `MANIFEST.sha256`
+- เทสต์: gesture ผ่าน 75 (68 จาก PR + ใหม่ 7), root ผ่าน 176 ทดสอบเฉพาะซอฟต์แวร์ ไม่ได้ใช้เว็บแคม หุ่น หรือมอเตอร์จริง
+
 ## 2026-10-01: mini practice field, new arm servo
 
 **EN**

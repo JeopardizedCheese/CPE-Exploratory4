@@ -1,5 +1,7 @@
 # เช็กลิสต์ทดสอบ gesture control
 
+> **เลิกใช้แล้ว (1 ต.ค. 2026):** หน้านี้เป็นของระบบสองมือเดิม ระบบหลักตอนนี้คือคันโยกมือเดียว `lever_control.py` ดู [README_LEVER_TH.md](README_LEVER_TH.md) หน้านี้เก็บไว้สำรอง
+
 ทำตามลำดับ ผ่านขั้นหนึ่งก่อนค่อยไปขั้นถัดไป ทุกคำสั่งรันในโฟลเดอร์ `CHROMA-Gesture-Control`
 (บน Windows ใช้ `.\.venv-gesture\Scripts\python.exe` แทน `python`)
 

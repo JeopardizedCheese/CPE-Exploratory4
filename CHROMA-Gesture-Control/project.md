@@ -1,5 +1,7 @@
 # CHROMA Gesture Control — Project Context
 
+> **เลิกใช้แล้ว (1 ต.ค. 2026):** หน้านี้เป็นของระบบสองมือเดิม ระบบหลักตอนนี้คือคันโยกมือเดียว `lever_control.py` ดู [README_LEVER_TH.md](README_LEVER_TH.md) หน้านี้เก็บไว้สำรอง
+
 สถานะ: 29 กันยายน 2026 (ควบคุมสองมือ, ตรงกับ `firmware/robot_ctrl` ปัจจุบัน)
 
 ## เป้าหมายและขอบเขต
