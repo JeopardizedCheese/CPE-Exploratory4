@@ -28,11 +28,27 @@
 #define SERVO_US_MIN 2500         // pulse width at 0 deg   (same as course example 03)
 #define SERVO_US_MAX 500        // pulse width at 180 deg
 #define SERVO_MIN_DEG 0          // never command outside this range
-#define SERVO_MAX_DEG 125         // a little past closed
+#define SERVO_MAX_DEG 360         // a little past closed
 #define SERVO_START_DEG 0        // assumed position before the first command (no pulse is sent at boot)
 #define SERVO_DEG_PER_SEC 180.0f // slow moves reduce current spikes / brownout
 #define GRIP_OPEN_DEG 0          // measured: jaws open
-#define GRIP_CLOSE_DEG 100        // measured: holds every stone size with less strain
+#define GRIP_CLOSE_DEG 250        // measured: holds every stone size with less strain
+
+// ---------- 360 deg (continuous rotation) servo ----------
+// The gripper servo is a 360 servo: no position sensor, the pulse sets speed and direction.
+// Each grip/servo command is a timed spin; the angle (GRIP_OPEN/CLOSE_DEG, status "servo")
+// is estimated from the time spun. Same convention as before: start = open = 0 deg at the
+// counter-clockwise end, closing (larger angles) turns clockwise. Between moves: no pulse
+// (servo at rest, cannot creep). 0 = normal 180 deg servo.
+#define SERVO_CONTINUOUS 1
+#define SERVO_CLOSE_PULSE_SIGN -1     // closing = clockwise = pulse below SERVO_STOP_US (most 360
+                                      // servos); +1 if it closes counter-clockwise
+#define SERVO_STOP_US 1500            // pulse at which it stands still
+#define SERVO_REST_NO_PULSE 1         // 1: at rest send no pulse; 0: send SERVO_STOP_US (trim it)
+#define SERVO_SPIN_US 250             // spin pulse = SERVO_STOP_US +/- this: larger = faster
+#define SERVO_SPIN_DEG_PER_SEC 200.0f // CALIBRATE: degrees turned per second at that pulse
+#define SERVO_MAX_MOVE_MS 1500        // safety: one move never spins longer than this
+#define SERVO_OPEN_EXTRA_DEG 0        // >0: opening spins this much further into the open stop (cancels drift)
 
 // ---------- Safety ----------
 #define DRIVE_TIMEOUT_MS 300     // no drive packet for this long -> wheels stop
@@ -41,9 +57,17 @@
 // ---------- Network ----------
 // Fixed IP on the team hotspot (10.178.188.0/24, gateway .223).
 // Set USE_STATIC_IP 0 to go back to an automatic (DHCP) address.
+
+/*Mick's wifi*/
 #define USE_STATIC_IP 1
-#define STATIC_IP  10, 178, 188, 50
-#define GATEWAY_IP 10, 178, 188, 223
+#define STATIC_IP  172, 20, 10, 2
+#define GATEWAY_IP 172, 20, 10, 1
 #define SUBNET_IP  255, 255, 255, 0
+
+/* P's Wifi */
+// #define STATIC_IP  10, 178, 188, 50
+// #define GATEWAY_IP 10, 178, 188, 223
+// #define SUBNET_IP  255, 255, 255, 0
+
 #define UDP_PORT 4211
 #define STATUS_PERIOD_MS 200

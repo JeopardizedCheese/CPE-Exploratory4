@@ -83,6 +83,52 @@ void setupServo() {
   servoPos = servoTarget = constrain(SERVO_START_DEG, SERVO_MIN_DEG, SERVO_MAX_DEG);
 }
 
+#if SERVO_CONTINUOUS
+// 360 servo: timed spins, at rest between moves (see config.h).
+unsigned long servoMoveStart = 0;
+bool servoMoving = false;
+float servoGoal = SERVO_START_DEG;     // where the spin stops (target, or past it into the open stop)
+
+void servoRest() {
+  servoMoving = false;
+#if SERVO_REST_NO_PULSE
+  ledcWrite(SERVO_PIN, 0);
+#else
+  ledcWrite(SERVO_PIN, (uint32_t)(SERVO_STOP_US * 65535.0f / 20000.0f));
+#endif
+}
+
+void servoSpin(float dir) {          // dir +1 = closing (clockwise), -1 = opening (counter-clockwise)
+  float us = SERVO_STOP_US + dir * SERVO_CLOSE_PULSE_SIGN * SERVO_SPIN_US;
+  ledcWrite(SERVO_PIN, (uint32_t)(us * 65535.0f / 20000.0f));
+}
+
+bool setServo(float deg) {
+  if (!isfinite(deg)) return false;
+  servoTarget = constrain(deg, SERVO_MIN_DEG, SERVO_MAX_DEG);
+  servoActive = true;                 // position: assumed SERVO_START_DEG at boot, then estimated
+  servoGoal = servoTarget;
+  if (servoTarget <= SERVO_MIN_DEG && SERVO_OPEN_EXTRA_DEG > 0) servoGoal = SERVO_MIN_DEG - SERVO_OPEN_EXTRA_DEG;
+  servoMoveStart = millis();
+  servoMoving = fabsf(servoGoal - servoPos) >= 0.5f;
+  if (!servoMoving) servoRest();
+  return true;
+}
+
+void updateServo(float dt) {
+  if (!servoActive || !servoMoving) return;
+  float d = servoGoal - servoPos;
+  if (fabsf(d) < 0.5f || millis() - servoMoveStart > SERVO_MAX_MOVE_MS) {
+    servoPos = servoTarget;           // arrived (or gave up): the estimate is the target
+    servoRest();
+    return;
+  }
+  float step = SERVO_SPIN_DEG_PER_SEC * dt;
+  servoPos += constrain(d, -step, step);
+  servoSpin(d > 0 ? 1.0f : -1.0f);
+}
+
+#else
 bool setServo(float deg) {
   if (!isfinite(deg)) return false;
   servoTarget = constrain(deg, SERVO_MIN_DEG, SERVO_MAX_DEG);
@@ -102,6 +148,7 @@ void updateServo(float dt) {
   servoPos += constrain(d, -step, step);
   servoWrite(servoPos);
 }
+#endif
 
 // ---------------------------------------------------------------- state
 void enter(State s, const char *why) {
