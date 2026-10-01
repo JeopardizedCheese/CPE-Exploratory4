@@ -27,13 +27,22 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 - The calibrated field fills our camera picture (≈0 px border left/right), so a tag outside the calibrated rectangle is normally out of the picture too; wall recovery acts between tag loss (~100–170 mm from an edge) and the 200 mm margin.
 - The five `runs/autonomy/20260929-07*/video.mp4` were unfinalized; recovered copies are `video_recovered.avi` in the same folders (user's laptop only). Trace rows map to frames via `video_frame`.
 
-- **2026-10-01, later: mini practice field.** Fellow students built a ~1650 x 1100 mm field in the common room with only a red and a green zone and an off-centre camera. Config `minifield/calib_minifield.json`, steps in `minifield/README.md` (camera height/floor point must be measured; grip offset 140 is an estimate). New keys: `zone_colors` (fields with fewer zones) and `autonomy.color_alias` (deliver zone-less colours to another zone). Arm remounted: firmware `config.h` servo pin 33, swapped pulse widths, close 100 (repo matches the user's board; needs a flash); `calib.json` `grip_close` set to 100 to match (uncommitted working copy). The user tunes duty (~0.65; the practice floor has less friction).
+- **2026-10-01, later: mini practice field.** Fellow students built a ~1650 x 1100 mm field in the common room with only a red and a green zone and an off-centre camera. Config `minifield/calib_minifield.json`, steps in `minifield/README.md` (camera height/floor point must be measured; grip offset 140 is an estimate). New keys: `zone_colors` (fields with fewer zones) and `autonomy.color_alias` (deliver zone-less colours to another zone). Arm remounted: firmware `config.h` servo pin 33, swapped pulse widths, close 100 (repo matches the user's board; needs a flash); `calib.json` `grip_close` set to 100 to match (uncommitted working copy); since the 360 servo both configs say 250. The user tunes duty (~0.65; the practice floor has less friction).
 - **2026-10-01, gesture: PR #3 merged locally** (`ad770db`, not pushed). The one-hand lever `CHROMA-Gesture-Control/lever_control.py` replaces the two-hand system (kept as a backup; its core files are imported by the lever and must stay). Added `+`/`-` speed keys and `--min-duty`. Software-tested only. Gesture tests: `cd CHROMA-Gesture-Control && ./.venv-gesture/bin/python -m unittest discover -s tests` (75 pass).
 
 ## Open work, in the user's priority order
 
 0. **V1 / V2 (built 2026-10-01, local, not pushed).** `autonomy.py` = V1 (unchanged), `autonomy2.py` = V2 (pile fix per [PILE_FIX_PLAN.md](PILE_FIX_PLAN.md) + outermost pile stone + buried-stone observations + target commitment + `skip_alone_s`); switches in `profiles.py`, same `calib.json`, same flags. Evidence in CHANGELOG "V1 / V2 split". Open: the user reviews the crop sheets in `evidence/v2-replay/` (acceptance bar item 3) before anything is pushed; then a field run of each version. Still undecided from the 2026-10-01 study: wall keep-out testing only vision's one `approach_deg`, parallax robot mask (hull), shadow rule, and the prototype `vision.robot_approach "free"` (local branch `proto/robot-side-approach`).
-0b. **360 servo (2026-10-01, uncommitted working copy of `firmware/robot_ctrl`).** The gripper servo is now a 360 (continuous) servo: a position pulse made it spin forever. `config.h` `SERVO_CONTINUOUS 1`: each open/close is a timed spin (open = 0 deg = counter-clockwise end, close turns clockwise), no pulse between moves, max 1.5 s per move. Compiles; not bench-tested. To do on the bench: power on with jaws open; if close turns the wrong way set `SERVO_CLOSE_PULSE_SIGN` +1; calibrate `SERVO_SPIN_DEG_PER_SEC` (200 = guess) until close stops at the stone; optional `SERVO_OPEN_EXTRA_DEG` ~15 if the jaw has an open end stop (cancels drift). `SERVO_CONTINUOUS 0` = old 180 servo code. Commit once it works.
+0a. **V3 = V2 + grip check (built 2026-10-01 evening, local on `v1-v2-split`, not pushed; match 2026-10-02).**
+   A HuskyLens 1 (the *gripper camera*, fixed tilt, inside the footprint, clear of the tag) looks into the
+   closed jaws; object classification, not colour. After every close the planner sends `look`; the ESP32
+   returns 5 class IDs; Empty (5/5) -> open, back off, skip the spot; Single/Multiple (4/5), anything
+   else, no answer in 1.5 s -> carry as V2, overhead pick check included (skipping it on Single raised
+   wrong placements in the simulator: the camera cannot see colour). `autonomy3.py` refuses
+   to start unless status says `gripcam: ok`. Decisions and why: memory `v3-grip-check-2026-10-01.md`,
+   CONTEXT.md "Grip check". Steps: "Running V3" below. **Not bench-tested**; any brownout in the bench
+   test, or any stone read as Empty in `firmware_check.py --look`, means: run V2 at the match.
+0b. **360 servo (2026-10-01, committed `0e83e4a` with the team's config.h: close 250, Mick's hotspot IP 172.20.10.2).** The gripper servo is now a 360 (continuous) servo: a position pulse made it spin forever. `config.h` `SERVO_CONTINUOUS 1`: each open/close is a timed spin (open = 0 deg = counter-clockwise end, close turns clockwise), no pulse between moves, max 1.5 s per move. Compiles; not bench-tested. To do on the bench: power on with jaws open; if close turns the wrong way set `SERVO_CLOSE_PULSE_SIGN` +1; calibrate `SERVO_SPIN_DEG_PER_SEC` (200 = guess) until close stops at the stone; optional `SERVO_OPEN_EXTRA_DEG` ~15 if the jaw has an open end stop (cancels drift). `SERVO_CONTINUOUS 0` = old 180 servo code. Commit once it works.
 1. **Analyse the next recorded field run** (user/teammate will supply `runs/autonomy/<time>/` with `trace.jsonl` + `video.avi`): check pulse behaviour via trace keys `turn_phase`, `turn_pulse_s`, `turn_planned_deg`, `turn_moved_deg`, `pulse_gain`, `stalled`, `predict_mm`, `backoff_mm`. Compare real pulse rotation with `PULSE_TABLE`. New: check wall recovery on the real robot (`wall_phase`, `wall_reason`, `wall_clearance_mm`; how far one 0.15 s drive pulse and one 0.2 s turn pulse really move; whether a robot pinned on a wall gets free). `WALL_RECOVERY.md` has a field check procedure.
 2. **Stop overshoot in APPROACH** (analysed 2026-09-30, user has not chosen yet): options offered, in the suggested order: (a) bench test firmware short-brake (`inengmotor.brake()`) on a zero command vs coast — needs a reflash, and check the driver chip really brakes with both inputs high; (b) speed-proportional stop lead in APPROACH only (`grip_tol + speed × stop_lead_s`), test-first; (c) a coast term in `sim.py` so (b) can be validated. Fallback: pulse-driving APPROACH like pulse turning (precise, slower).
 3. **Drive floor from the duty sweep**: `motion_control.py --test-duty` (forward/left/right, `runs/motion/`) gives the lowest duty that reliably moves and turns the robot on a charged battery. Use it as `--set min_duty=X` for autonomy (no reflash); once settled, put it in `calib.json` or `MIN_DUTY`. `PULSE_TABLE` and `sim.FIELD_PARAMS` (stall_duty 0.65 assumed) are fitted at 0.71 and need a refit from the new runs.
@@ -52,7 +61,7 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 - **With every command to run a script, remind the user of the valid flags and switches** (list in PILE_FIX_PLAN.md; keep it current).
 - Match start: all gems start in one big pile and the team will make the robot crash into it. **The user will provide that code; don't write it.** Vision changes must keep the big pile's colour-0 observation.
 - No field testing time is left (2026-10-01): judge changes by replay of recorded runs and tests; offer config switches as the fallback at the match.
-- Robot ESP32 is on the team hotspot at a fixed private IP (see `firmware/robot_ctrl/config.h`); camera index 1.
+- Robot ESP32 is on the team hotspot at a fixed private IP (see `firmware/robot_ctrl/config.h`; since 2026-10-01 evening Mick's hotspot, `172.20.10.2`); camera index 1.
 
 ## Running V1 and V2, end to end
 
@@ -63,9 +72,10 @@ Same `calib.json`, same flags; neither writes `calib.json`. V2 lives on branch `
 
 **0. Firmware (once, after any change to `firmware/robot_ctrl/config.h`).** Flash `firmware/robot_ctrl`
 (ESP32 Dev Module, Arduino core 3.x). `GRIP_OPEN_DEG`/`GRIP_CLOSE_DEG` must equal `autonomy.grip_open/close`
-in the config (now 0/100). Gripper servo: see "360 servo" under open work. Then check the link and gripper:
+in the config (now 0/250: 360 servo, team config.h 2026-10-01). Gripper servo: see "360 servo" under open work. Then check the link and gripper:
 ```bash
-.venv/bin/python firmware_check.py <ESP_IP>                 # flags: --port 4211, --grip-open 0, --grip-close 100
+.venv/bin/python firmware_check.py <ESP_IP>                 # flags: --port 4211, --grip-open 0, --grip-close 250,
+                                                            #        --look N (V3 gripper camera only)
 ```
 
 **1. Camera (once per camera / resolution).**
@@ -131,7 +141,33 @@ V1 with only the pile fix: `autonomy.py <ESP_IP> --camera 1 --record --set visio
 Compare V1/V2 vision on recorded runs: `evidence/v2-replay/compare_v1_v2.py RUN[,RUN] OUT_PREFIX` (needs the
 run's empty-field reference). Planner in the simulator: `sim_bench.py [--v2] [--seeds 6] [--seconds 180]
 [--physics charged|low-battery|ideal] [--set KEY=VALUE] [--config PATH]` (it never runs vision, so it only
-compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (202 pass).
+compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (224 pass).
+
+## Running V3 (gripper camera), end to end
+
+V3 = `autonomy3.py` = V2 + `grip_check`. Same calib.json, same flags; `--set grip_check=false` = V2.
+1. **Wire** the HuskyLens 4-pin: T -> GPIO 25, R -> GPIO 32, - -> GND, + -> board 5 V (no power bank).
+2. **HuskyLens General Settings** (function button): Protocol Type **Serial 115200**; LED Light ON,
+   LED Brightness ~65; RGB Light OFF; screen brightness low after training. Fix these before training.
+3. **Flash** `firmware/robot_ctrl` (GRIPCAM_* in config.h). Status now has `gripcam` (ok/none).
+4. **Bench, brownout:** 10 grip closes on a stone while both motors start at full power, LEDs on; serial
+   log `reset reason: 9` even once = no HuskyLens at the match. Calibrate `SERVO_SPIN_DEG_PER_SEC` with
+   the HuskyLens powered (a slower spin closes less in the same time; if a 250 deg close needs more than
+   1.5 s raise `SERVO_MAX_MOVE_MS`).
+5. **Train** (Object Classification; long-press function button -> Learn Multiple ON -> Save & Return).
+   Long-press the learn button per ID (~30 pictures each, vary position), short press before the countdown
+   ends for the next ID, in this order: ID1 empty closed jaws on plain floor, ID2 empty over a zone
+   circle / line / near a wall, ID3 single stone (3 colours), ID4 single stone (other 3 colours) -
+   **include stones touching the tips of the closed jaws in ID3/ID4** (the jaws push them along), ID5
+   two stones same colour, ID6 two stones mixed. Other order: `--set grip_check_ids='{...}'` or put
+   `grip_check_ids` in calib.json `autonomy`. Short press on the learn button forgets everything.
+6. **Go/no-go** (bench tonight, venue tomorrow, no retraining there):
+   `.venv/bin/python firmware_check.py <ESP_IP> --look 10` (flags: `--port 4211`, `--config PATH`).
+   Three setups: stone in the jaws, stone at the jaw tips, empty. **Any stone read as Empty = FAIL -> V2.**
+7. **Run:** `.venv/bin/python autonomy3.py <ESP_IP> --camera 1 --record` (all runner flags and `--set`
+   switches as V1/V2). Trace keys on the frame that decides: `grip_verdict`, `grip_check_ids`,
+   `grip_check_s`; events log says `grip check: empty` or `to zone N (grip check: single)`.
+Simulator: `sim_bench.py --v3` (gripper camera simulated from the true held state).
 
 ## Useful commands
 

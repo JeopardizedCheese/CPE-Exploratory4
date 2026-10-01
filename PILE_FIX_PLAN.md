@@ -216,13 +216,17 @@ so otherwise two identical replays hash differently.
 ```bash
 .venv/bin/python autonomy.py  <ESP_IP> --camera 1 --record      # V1 (field-tested)
 .venv/bin/python autonomy2.py <ESP_IP> --camera 1 --record      # V2 (pile fix + outermost + commit)
+.venv/bin/python autonomy3.py <ESP_IP> --camera 1 --record      # V3 (V2 + grip check; needs gripcam ok)
   --set vision.pile_edge_pixels=legacy|nearest   pile edge pixels (V1 legacy, V2 nearest)
   --set vision.own_reach_mm=N      pale-rim reach for pile stones (default 15)
   --set vision.pile_outermost=true|false   one outermost stone per stuck pile (V2 true)
   --set vision.pile_regions=true|false     buried pile stones as coloured observations (V2 true)
   --set commit_target=true|false   keep a locked stone while it is still seen (V2 true)
   --set skip_alone_s=N|null        retry the only skipped stone after N s (V2 6, V1 null)
+  --set grip_check=true|false      grip check by the gripper camera (V3 true; V1/V2 false)
+  --set grip_check_ids='{"empty":[1,2],"single":[3,4],"multiple":[5,6]}'   trained HuskyLens IDs
   --set min_duty=X                 drive floor (firmware must report min_duty)
   --set <any autonomy key>=VALUE   typos are rejected; saved in runs/autonomy/<time>/config.json
   --dry-run  --check-config  --show-full-frame  --headless  --record-fps N  --config PATH
+.venv/bin/python firmware_check.py <ESP_IP> --look 10           # V3 go/no-go (--port, --config)
 ```

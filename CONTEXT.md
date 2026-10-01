@@ -56,6 +56,28 @@ _Avoid_: wrong drop
 The robot opening its gripper to let go of a stone — the planner's belief that a Placement happened, not the Placement itself. (หุ่นเปิดปากคีบ)
 _Avoid_: place, placed
 
+## Grip check
+
+**Gripper camera**:
+The camera on the robot that looks down into the closed jaws; it judges only what the jaws hold, never where the robot is. (กล้องที่ปากคีบ)
+_Avoid_: HuskyLens, hand cam, second camera
+
+**Overhead camera**:
+The fixed camera above the field; the only source of the robot pose and of Observations. (กล้องด้านบน)
+_Avoid_: main camera, webcam
+
+**Grip check**:
+The Gripper camera's verdict on the closed jaws, taken once per grip while the robot stands still: Empty, Single, Multiple, or Unsure. A stone touching the tips of the closed jaws counts as held: the jaws push it along. (ตรวจว่าคีบได้กี่ก้อน)
+_Avoid_: grab check, grip confirmation
+
+**Unsure grip**:
+A Grip check with no reliable verdict (no answer, no majority, unknown class); the robot carries on as if there were no Gripper camera. (ไม่แน่ใจว่าคีบได้)
+_Avoid_: failed check, error
+
+**Pick check**:
+The Overhead camera's check, once the robot has moved off the pick spot, that the locked stone did not stay behind; a failure is a Missed pick. (ตรวจว่าหินยังอยู่ที่เดิมไหม)
+_Avoid_: grab check, grab missed
+
 ## Points on the robot
 
 **Tag centre**:
