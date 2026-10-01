@@ -63,7 +63,7 @@ def main():
             print(f'{now:7.2f}  {prev} -> {robot.state} ({robot.why})')
         if peer and now - last_status >= 0.2:
             last_status = now
-            status = dict(robot.status(now), rx_age_ms=int((now - last_rx) * 1000))
+            status = dict(robot.status(now), rx_age_ms=int((now - last_rx) * 1000), session=session)
             sock.sendto(json.dumps(status).encode(), peer)
         if now - last_print >= 1.0:
             last_print = now
