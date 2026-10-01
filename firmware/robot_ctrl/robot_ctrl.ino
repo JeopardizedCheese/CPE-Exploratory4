@@ -4,6 +4,7 @@
 //
 // States:  IDLE --start--> RUNNING --stop--> IDLE
 // Wheels move only in RUNNING and only while drive packets keep arriving (300 ms watchdog).
+// The gripper camera (HuskyLens, V3) answers "look" commands; see config.h.
 // The gripper obeys grip/servo commands in both states.
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -150,6 +151,126 @@ void updateServo(float dt) {
 }
 #endif
 
+// ---------------------------------------------------------------- gripper camera
+// HuskyLens 1 in object classification mode on Serial2 (pins in config.h). A "look" command
+// collects GRIPCAM_READINGS class IDs, one per camera frame; the PC turns them into the grip
+// check verdict. Never blocks the loop. Protocol: HuskyLens/HUSKYLENSArduino "HUSKYLENS
+// Protocol.md": 55 AA 11 <len> <cmd> <data...> <sum of all bytes, low byte>.
+bool statusNow = false;                         // send the next status packet at once
+#if GRIPCAM_ENABLE
+HardwareSerial &cam = Serial2;
+enum { HL_REQUEST = 0x20, HL_RETURN_INFO = 0x29, HL_RETURN_BLOCK = 0x2A, HL_RETURN_ARROW = 0x2B,
+       HL_KNOCK = 0x2C, HL_ALGORITHM = 0x2D, HL_OBJECT_CLASSIFICATION = 6 };
+uint8_t camBuf[32];
+int camLen = 0;
+unsigned long camLastReply = 0, camNextKnock = 0, camAskedAt = 0;
+bool camWasAlive = false;
+
+int32_t lookN = -1;                             // the PC's look number; -1 = none this session
+bool lookDone = false, lookAsking = false;      // asking: a request is out, reply not complete
+unsigned long lookStart = 0;
+int lookIds[GRIPCAM_READINGS];
+int lookCount = 0, lookBlocksLeft = 0, lookId = 0;
+int32_t lookFrame = -1, lastFrame = -1;
+
+bool camAlive(unsigned long now) {
+  return camLastReply && now - camLastReply < GRIPCAM_ALIVE_MS;
+}
+
+void camSend(uint8_t cmd, int arg = -1) {       // arg >= 0: one 16-bit data word
+  uint8_t p[8];
+  int n = 0;
+  p[n++] = 0x55; p[n++] = 0xAA; p[n++] = 0x11; p[n++] = arg >= 0 ? 2 : 0; p[n++] = cmd;
+  if (arg >= 0) { p[n++] = arg & 0xFF; p[n++] = (arg >> 8) & 0xFF; }
+  uint8_t sum = 0;
+  for (int i = 0; i < n; i++) sum += p[i];
+  p[n++] = sum;
+  cam.write(p, n);
+}
+
+void camReading() {                             // one complete reply to a request
+  lookAsking = false;
+  if (lookFrame != lastFrame && lookCount < GRIPCAM_READINGS) {   // same frame twice counts once
+    lastFrame = lookFrame;
+    lookIds[lookCount++] = lookId;
+  }
+}
+
+void camFrame(uint8_t cmd, const uint8_t *d, int len, unsigned long now) {
+  camLastReply = now;                           // any valid frame: the camera is there
+  if (!lookAsking) return;
+  if (cmd == HL_RETURN_INFO && len >= 6) {      // count, learned IDs, frame number, reserved
+    lookBlocksLeft = d[0] | (d[1] << 8);
+    lookFrame = d[4] | (d[5] << 8);
+    lookId = 0;                                 // nothing recognised = ID 0
+    if (lookBlocksLeft == 0) camReading();
+  } else if ((cmd == HL_RETURN_BLOCK || cmd == HL_RETURN_ARROW) && len >= 10 && lookBlocksLeft > 0) {
+    if (lookId == 0) lookId = d[8] | (d[9] << 8);   // classification: the first result's ID
+    if (--lookBlocksLeft == 0) camReading();
+  }
+}
+
+void camPoll(unsigned long now) {
+  while (cam.available()) {
+    uint8_t b = cam.read();
+    if (camLen == 0) { if (b == 0x55) camBuf[camLen++] = b; continue; }
+    if (camLen == 1) { if (b == 0xAA) camBuf[camLen++] = b; else camLen = (b == 0x55); continue; }
+    camBuf[camLen++] = b;
+    if (camLen == 4 && camBuf[3] > sizeof(camBuf) - 6) { camLen = 0; continue; }   // impossible length
+    if (camLen > 4 && camLen == 6 + camBuf[3]) {          // header, address, length, command, data, sum
+      uint8_t sum = 0;
+      for (int i = 0; i < camLen - 1; i++) sum += camBuf[i];
+      if (sum == camBuf[camLen - 1]) camFrame(camBuf[4], camBuf + 5, camBuf[3], now);
+      camLen = 0;
+    }
+  }
+}
+
+void camLook(int32_t n, unsigned long now) {
+  lookN = n;
+  lookDone = lookAsking = false;
+  lookStart = now;
+  lookCount = 0;
+  lastFrame = -1;
+}
+
+void camUpdate(unsigned long now) {
+  camPoll(now);
+  bool alive = camAlive(now);
+  if (alive && !camWasAlive) camSend(HL_ALGORITHM, HL_OBJECT_CLASSIFICATION);   // (re)connected
+  camWasAlive = alive;
+  if (lookN >= 0 && !lookDone) {
+    if (now - lookStart < GRIPCAM_SETTLE_MS) return;
+    if (lookCount >= GRIPCAM_READINGS || now - lookStart > GRIPCAM_SETTLE_MS + GRIPCAM_LOOK_MS) {
+      lookDone = true;
+      lookAsking = false;
+      statusNow = true;
+      return;
+    }
+    // next request 20 ms after the last reply; resend one that got no reply in 100 ms
+    if (now - camAskedAt >= (lookAsking ? 100UL : 20UL)) {
+      lookAsking = true;
+      lookBlocksLeft = 0;
+      camAskedAt = now;
+      camSend(HL_REQUEST);
+    }
+  } else if ((long)(now - camNextKnock) >= 0) {
+    camNextKnock = now + GRIPCAM_KNOCK_MS;
+    camSend(HL_KNOCK);
+  }
+}
+
+void camStatus(JsonDocument &doc, unsigned long now) {
+  doc["gripcam"] = camAlive(now) ? "ok" : "none";
+  if (lookN < 0) return;
+  JsonObject look = doc["look"].to<JsonObject>();
+  look["n"] = lookN;
+  look["done"] = lookDone;
+  JsonArray ids = look["ids"].to<JsonArray>();
+  for (int i = 0; i < lookCount; i++) ids.add(lookIds[i]);
+}
+#endif
+
 // ---------------------------------------------------------------- state
 void enter(State s, const char *why) {
   if (state == s) return;
@@ -176,6 +297,9 @@ void handlePacket(char *buf, unsigned long now) {
     if (activeSession.length() && now - lastRx <= DRIVE_TIMEOUT_MS) return;
     activeSession = session;
     lastSeq = 0;
+#if GRIPCAM_ENABLE
+    lookN = -1;                           // a new controller never sees the old one's look
+#endif
   }
   if (seq <= lastSeq) return;             // duplicate / reordered: ignore
   lastSeq = seq;
@@ -214,6 +338,10 @@ void handlePacket(char *buf, unsigned long now) {
     const char *p = doc["p"] | "";
     if (!strcmp(p, "open")) setServo(GRIP_OPEN_DEG);
     if (!strcmp(p, "close")) setServo(GRIP_CLOSE_DEG);
+  } else if (!strcmp(c, "look")) {              // grip check: classify what the jaws hold (V3)
+#if GRIPCAM_ENABLE
+    if (doc["n"].is<int32_t>() && doc["n"].as<int32_t>() >= 0) camLook(doc["n"].as<int32_t>(), now);
+#endif
   }
   // "ping" and unknown commands only refresh the link.
 }
@@ -232,8 +360,9 @@ void pollUdp(unsigned long now) {
 }
 
 void sendStatus(unsigned long now) {
-  if (!peerPort || now - lastStatus < STATUS_PERIOD_MS) return;
+  if (!peerPort || (!statusNow && now - lastStatus < STATUS_PERIOD_MS)) return;
   lastStatus = now;
+  statusNow = false;
   JsonDocument doc;
   doc["state"] = STATE_NAME[state];
   doc["why"] = reason;
@@ -249,6 +378,11 @@ void sendStatus(unsigned long now) {
   doc["rssi"] = WiFi.RSSI();
   JsonArray s = doc["servo"].to<JsonArray>();   // kept as a list: the PC side reads servo[0]
   s.add(roundf(servoPos));
+#if GRIPCAM_ENABLE
+  camStatus(doc, now);
+#else
+  doc["gripcam"] = "off";
+#endif
   char out[512];
   size_t n = serializeJson(doc, out, sizeof(out));
   udp.beginPacket(peerIp, peerPort);
@@ -265,6 +399,9 @@ void setup() {
   Serial.printf("\nreset reason: %d\n", (int)esp_reset_reason());
   if (STATUS_LED >= 0) pinMode(STATUS_LED, OUTPUT);
   setupServo();                        // after setupMotors: the servo gets its own PWM channel
+#if GRIPCAM_ENABLE
+  cam.begin(GRIPCAM_BAUD, SERIAL_8N1, GRIPCAM_RX_PIN, GRIPCAM_TX_PIN);   // explicit pins: never 16/17
+#endif
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);                // lower latency
 #if USE_STATIC_IP
@@ -300,6 +437,9 @@ void loop() {
   }
   applyMotors();
   updateServo(dt);
+#if GRIPCAM_ENABLE
+  camUpdate(now);
+#endif
   sendStatus(now);
 
   if (STATUS_LED >= 0) digitalWrite(STATUS_LED, state == RUNNING ? HIGH : LOW);

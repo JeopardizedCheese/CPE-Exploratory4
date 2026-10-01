@@ -50,6 +50,21 @@
 #define SERVO_MAX_MOVE_MS 1500        // safety: one move never spins longer than this
 #define SERVO_OPEN_EXTRA_DEG 0        // >0: opening spins this much further into the open stop (cancels drift)
 
+// ---------- Gripper camera (HuskyLens 1, V3 grip check) ----------
+// Wiring (HuskyLens 4-pin): T -> GRIPCAM_RX_PIN, R -> GRIPCAM_TX_PIN, - -> GND, + -> 5 V.
+// HuskyLens General Settings: Protocol Type "Serial 115200". Never use 16/17 (right motor).
+// Read only on a "look" command (V3, robot standing still in GRIP); V1/V2 never send one.
+// Without a HuskyLens plugged in everything else works as before (status "gripcam":"none").
+#define GRIPCAM_ENABLE 1              // 0 = no gripper camera code (status "gripcam":"off")
+#define GRIPCAM_RX_PIN 25
+#define GRIPCAM_TX_PIN 32
+#define GRIPCAM_BAUD 115200
+#define GRIPCAM_SETTLE_MS 150         // look: wait this long first (the jaws come to rest)
+#define GRIPCAM_LOOK_MS 700           // look: then give up after this long
+#define GRIPCAM_READINGS 5            // look: classifications, each from a different camera frame
+#define GRIPCAM_KNOCK_MS 1000         // not looking: "are you there" this often
+#define GRIPCAM_ALIVE_MS 2500         // no reply for this long -> "gripcam":"none"
+
 // ---------- Safety ----------
 #define DRIVE_TIMEOUT_MS 300     // no drive packet for this long -> wheels stop
 #define STATUS_LED 23            // board LED: off = IDLE, on = RUNNING. -1 = none
