@@ -1,5 +1,17 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01 (night, later): camera floor point from the clicked corners (PR, merged into v1-v2-split)
+
+**EN**
+- Merged `codex/camera-floor-measurement` (`0077f9c`), no conflicts. `calibrate_arena.py --camera-downward` maps the centre of the raw camera frame through the floor homography and saves the result as `robot_tag.camera_floor_xy_mm` (plus a `camera_floor_measurement` record) when you press `s`. Without the flag `calibrate_arena.py` is unchanged. `--optical-center CX CY` replaces the frame centre if the lens centre is known. Stand-alone, from a saved raw frame (never opens the camera, never writes the config): `measure_camera_floor.py FRAME.png --camera-downward [--use-config-corners --headless] [--optical-center CX CY] [--output PATH]`.
+- Only valid for a camera pointing straight down; a tilted camera gives the point it aims at. The value only corrects the tag's height parallax: an error of E mm moves the pose by about 0.11 x E. It needs the real field corners and a full, uncropped camera frame (a picture cropped to the field always gives the field centre).
+- Tests: 233 pass (9 new).
+
+**TH**
+- รวม `codex/camera-floor-measurement` (`0077f9c`) ไม่มี conflict: `calibrate_arena.py --camera-downward` แปลงจุดกลางภาพดิบผ่าน floor homography แล้วบันทึกเป็น `robot_tag.camera_floor_xy_mm` (พร้อมบันทึก `camera_floor_measurement`) เมื่อกด `s` ถ้าไม่ใส่ flag `calibrate_arena.py` ทำงานเหมือนเดิม `--optical-center CX CY` ใช้แทนจุดกลางภาพถ้ารู้ศูนย์เลนส์ ใช้แยกจากภาพดิบที่บันทึกไว้ได้ (ไม่เปิดกล้อง ไม่เขียน config): `measure_camera_floor.py FRAME.png --camera-downward [--use-config-corners --headless] [--optical-center CX CY] [--output PATH]`
+- ใช้ได้เฉพาะกล้องที่ชี้ลงตั้งฉาก กล้องเอียงจะได้จุดที่กล้องเล็งแทน ค่านี้แก้เฉพาะ parallax จากความสูงของ tag: ค่าผิด E มม. ทำให้ตำแหน่งหุ่นผิดประมาณ 0.11 x E ต้องคลิกมุมสนามจริงบนภาพเต็มเฟรมที่ไม่ถูกครอป (ภาพที่ครอปพอดีสนามจะได้กลางสนามเสมอ)
+- เทสต์: ผ่าน 233 (ใหม่ 9)
+
 ## 2026-10-01 (night, later): gesture UI: ERA-ONE name, left/right hand tag fixed
 
 **EN**

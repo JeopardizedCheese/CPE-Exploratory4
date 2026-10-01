@@ -86,6 +86,8 @@ in the config (now 0/250: 360 servo, team config.h 2026-10-01). Gripper servo: s
 **2. Field (every session: the team recalibrates each run).** Empty field, robot off the field.
 ```bash
 .venv/bin/python calibrate_arena.py 1                       # click 4 corners clockwise, s = save (also background.png); flag: --config
+                                                            #        --camera-downward (also save camera_floor_xy_mm from the frame
+                                                            #        centre; camera must point straight down), --optical-center CX CY
 .venv/bin/python find_zones.py                              # flags: --config, --labels 3 6 (IDs in printed order), --yes,
                                                             #        --margin-mm 20, --ring-mm 8, --min-saturation N
 .venv/bin/python sample_hsv.py 1                            # under this light, >= 5 patches per colour; flags: --config,
@@ -141,7 +143,7 @@ V1 with only the pile fix: `autonomy.py <ESP_IP> --camera 1 --record --set visio
 Compare V1/V2 vision on recorded runs: `evidence/v2-replay/compare_v1_v2.py RUN[,RUN] OUT_PREFIX` (needs the
 run's empty-field reference). Planner in the simulator: `sim_bench.py [--v2] [--seeds 6] [--seconds 180]
 [--physics charged|low-battery|ideal] [--set KEY=VALUE] [--config PATH]` (it never runs vision, so it only
-compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (224 pass).
+compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (233 pass).
 
 ## Running V3 (gripper camera), end to end
 
