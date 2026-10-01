@@ -75,6 +75,7 @@ Press `q` to quit detection, `m` to display foreground segmentation.
 | `sample_hsv.py` | Freeze frames, save labeled patches across sessions, calibrate or evaluate |
 | `color_preview.py` | Color masks, rejection reasons, reference checks and saved evidence; no robot link |
 | `calibrate_arena.py` | Floor corners, empty-field reference, exclusion zones |
+| `measure_camera_floor.py` | Estimate the point under a perpendicular camera from a saved raw frame; no camera/robot connection |
 | `camera_probe.py` | Reports an unknown camera's settings, tests which ones it accepts, measures real fps |
 | `find_zones.py` | Finds the six color zones in `background.png`, writes circular exclusions with margin and zone centers |
 | `detect_live.py` | Live/replayed detection, UDP v2 targets to port 4210 |
@@ -95,6 +96,10 @@ Press `q` to quit detection, `m` to display foreground segmentation.
    Your latest measured size is 2100 x 1200 mm. SPACE freezes; select corners
    TL, TR, BR, BL, then Enter. The long side corresponds to the horizontal axis.
    Press `s` to save without outlining zones; label circles in step 5.
+   For a camera whose optical axis is confirmed perpendicular to the floor, add
+   `--camera-downward` to preview and save `camera_floor_xy_mm` from the optical-axis
+   pixel. The default raw image midpoint is an approximation; use `--optical-center CX CY`
+   when known. See [click measurement guide](CAMERA_FLOOR_MEASUREMENT_TH.md).
 3. Run `sample_hsv.py`. SPACE freezes. Select 1 violet,
    2 cyan, 3 crimson, 4 orange, 5 skyblue, 6 lime; click real stone faces.
    Avoid glare, floor and scoring paper. Collect several sessions as described in
