@@ -82,11 +82,13 @@ class GripState(unittest.TestCase):
         self.assertEqual(p.debug['grip_verdict'], 'empty')
         self.assertEqual(p.debug['grip_check_ids'], [1, 1, 1, 1, 1])
 
-    def test_single_and_multiple_carry_without_the_pick_check(self):
+    def test_single_and_multiple_carry_with_the_pick_check(self):
+        # the camera cannot see colour: a neighbour of another colour in the jaws must still be
+        # caught by the overhead pick check
         for ids, verdict in (([3, 3, 4, 3, 1], 'single'), ([5, 5, 5, 6, 3], 'multiple')):
             p, ev = self.answer(ids)
             self.assertEqual(p.state, 'CARRY', verdict)
-            self.assertTrue(p.pick_checked)
+            self.assertFalse(p.pick_checked)
             self.assertEqual(p.carrying, 2)
             self.assertNotIn(('grip', {'p': 'open'}), ev)
             self.assertIn(verdict, p.events_log[-1][3])

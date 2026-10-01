@@ -107,8 +107,11 @@ DEFAULTS = {
     'skip_alone_s': None,
     # V3 switch: grip check. Once the jaws have closed, the gripper camera (HuskyLens on the
     # ESP32, "look" command) classifies them 5 times. Empty (empty_votes agree) -> open, back
-    # off, skip that spot; Single/Multiple (votes agree) -> carry without the overhead pick
-    # check; anything else, or no answer in grip_check_timeout_s -> Unsure = as without it.
+    # off, skip that spot. Single/Multiple (votes agree), anything else, or no answer in
+    # grip_check_timeout_s -> carry as without it, overhead pick check included: the camera
+    # counts stones but cannot tell their colour, and a neighbour of another colour in the
+    # jaws is exactly what the pick check catches (simulator: skipping it on Single raised
+    # wrong placements 0 -> 11 and 8 -> 23).
     # grip_check_ids: the HuskyLens IDs trained for each verdict (learn order).
     'grip_check': False,
     'grip_check_ids': {'empty': [1, 2], 'single': [3, 4], 'multiple': [5, 6]},
@@ -765,8 +768,6 @@ class Planner:
                 ev.append(('grip', {'p': 'open'}))
                 self._go('BACKOFF', now, 'grip check: empty')
                 return 0.0, 0.0, ev
-            if verdict in ('single', 'multiple'):
-                self.pick_checked = True        # the gripper camera saw it: no overhead pick check
             self._go('CARRY', now, f'to zone {self.carrying}' + (f' (grip check: {verdict})' if verdict else ''))
             return 0.0, 0.0, ev
 

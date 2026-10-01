@@ -34,8 +34,8 @@ vision.pile_outermost and vision.pile_regions need pile_edge_pixels "nearest" (i
 V3 = V2 + one switch (turn it off with --set grip_check=false; V1 + grip check = autonomy.py
 --set grip_check=true):
   autonomy.grip_check     true       once the jaws have closed, the gripper camera classifies them:
-                                     Empty -> open, back off, skip the spot; Single/Multiple -> carry
-                                     (no overhead pick check); Unsure -> as V2. V3 refuses to start
+                                     Empty -> open, back off, skip the spot; Single/Multiple/Unsure
+                                     -> carry as V2 (pick check included). V3 refuses to start
                                      unless the firmware reports "gripcam":"ok". The trained IDs per
                                      verdict are autonomy.grip_check_ids (calib.json or --set).
 """
