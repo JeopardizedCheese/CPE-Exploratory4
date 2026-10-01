@@ -1,5 +1,12 @@
 # Plan: pile-mode fix (touching stones shown as "?")
 
+Status 2026-10-01 (later): **built, as part of V2** (`autonomy2.py`, switches in `profiles.py`; see CHANGELOG
+"V1 / V2 split"). The user changed Q6: the code default stays `"legacy"` so `autonomy.py` (V1) is unchanged; V2
+sets `"nearest"`. Acceptance bar items 1, 2 and 4 are met (202 tests; replay: 0 targets lost, 2057 → 2980 targets,
+1747 → 1332 frames without; legacy hash-identical). Item 3 (the user looks at the crop sheets in
+`evidence/v2-replay/`) is open; nothing is pushed. V2 also adds an outermost-stone fallback, buried-stone
+observations and target commitment, which this plan did not cover. The original status follows.
+
 Status 2026-10-01: **designed and decided, not built.** A prototype exists (code in the appendix). The next session
 builds it, following this file. Build test-first; the decisions below are settled, so don't re-open them. Readiness
 was checked on 2026-10-01 (plan matches the code, 163 tests pass, replay runs and the 09:15 reference are on disk);
@@ -207,10 +214,15 @@ so otherwise two identical replays hash differently.
 ## Valid flags to remind the user of (they asked for this with every run command)
 
 ```bash
-.venv/bin/python autonomy.py <ESP_IP> --camera 1 --record                                    # real run
-.venv/bin/python autonomy.py <ESP_IP> --camera 1 --record --set vision.pile_edge_pixels=legacy   # old pile behaviour (after this is built)
+.venv/bin/python autonomy.py  <ESP_IP> --camera 1 --record      # V1 (field-tested)
+.venv/bin/python autonomy2.py <ESP_IP> --camera 1 --record      # V2 (pile fix + outermost + commit)
+  --set vision.pile_edge_pixels=legacy|nearest   pile edge pixels (V1 legacy, V2 nearest)
+  --set vision.own_reach_mm=N      pale-rim reach for pile stones (default 15)
+  --set vision.pile_outermost=true|false   one outermost stone per stuck pile (V2 true)
+  --set vision.pile_regions=true|false     buried pile stones as coloured observations (V2 true)
+  --set commit_target=true|false   keep a locked stone while it is still seen (V2 true)
+  --set skip_alone_s=N|null        retry the only skipped stone after N s (V2 6, V1 null)
   --set min_duty=X                 drive floor (firmware must report min_duty)
-  --set vision.own_reach_mm=N      pale-rim reach for pile stones (default 15, after this is built)
   --set <any autonomy key>=VALUE   typos are rejected; saved in runs/autonomy/<time>/config.json
-  --dry-run  --check-config  --show-full-frame  --headless  --record-fps N
+  --dry-run  --check-config  --show-full-frame  --headless  --record-fps N  --config PATH
 ```

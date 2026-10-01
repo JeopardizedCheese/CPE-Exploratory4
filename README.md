@@ -234,6 +234,11 @@ check, unless a different known color appears at its position.
 | `region_min_mm2` / `region_max_mm2` | 150 / 2000 | Voting area of one-stone regions |
 | `max_gem_extent_mm` | 70 | Longest side of one-stone regions |
 | `max_approach_turn_deg` | 67.5 | Allowed deviation from straight out of the pile |
+| `pile_edge_pixels` | legacy | `nearest` (V2): unvoted blob pixels within `own_reach_mm` belong to the nearest stone |
+| `own_reach_mm` | 15 | Reach of a stone's pale rim in `nearest` mode |
+| `pile_outermost` | false | V2: one outermost stone per pile when no edge stone is free |
+| `outermost_width_mm` | 30 | Width of the outermost stone's clear exit line |
+| `pile_regions` | false | V2: report buried pile stones as coloured, not pickable observations |
 | `sticky_frames` | 0 | Frames to hold a target after it drops out |
 | `min_obstacle_mm2` | off | Ignore foreground blobs smaller than this (background speckles); e.g. 150 |
 | `edge_margin_mm` | 0 | Ignore a strip this wide along the arena border (walls, fence, mat edge) |
@@ -314,6 +319,33 @@ See [REVIEW_AND_PLAN.md](REVIEW_AND_PLAN.md) for PDF rules, design decisions,
 physical-lighting improvements, remaining robot work, and field acceptance tests.
 ## Autonomy (autonomy.py)
 
+### Two versions: V1 (`autonomy.py`) and V2 (`autonomy2.py`)
+
+Both use the same `calib.json` and the same flags; `calib.json` is never written.
+
+| | Run with | What it is |
+| --- | --- | --- |
+| **V1** | `python autonomy.py ...` | The field-tested behaviour. A pile of touching stones is one "?" blob; its edge stones are rarely pickable. |
+| **V2** | `python autonomy2.py ...` | V1 plus the pile fix, the outermost pile stone and target commitment (below). |
+
+V2 is a set of switches ([profiles.py](profiles.py)); each one can be turned back per run
+with `--set`, e.g. `python autonomy2.py ... --set vision.pile_outermost=false`. The run
+folder's `config.json` records the version (`"profile"`) and every switch, and V2 run
+folders end in `-v2`. `detect_live.py --v2` previews V2 vision (magenta = outermost stone),
+`sim_bench.py --v2` compares V2's planner switches in the simulator (the simulator never
+runs `vision.py`, so it cannot judge the vision switches).
+
+| Switch | V1 | V2 | What V2 does |
+| --- | --- | --- | --- |
+| `vision.pile_edge_pixels` | `legacy` | `nearest` | A stone's pale highlight and blurred rim (pixels that vote for no colour) belong to the nearest stone within `vision.own_reach_mm` (15), instead of blocking its own corridor. Edge stones of a pile become pickable; aim point = core + rim centroid. ([PILE_FIX_PLAN.md](PILE_FIX_PLAN.md)) |
+| `vision.pile_outermost` | false | true | A pile with no free edge stone still gives one target: the stone farthest from the pile's centre whose own exit line (`outermost_width_mm`, 30) is clear, approached toward the centre. Only that pile may lie in its gripper-wide corridor; walls, the robot and other objects still block it. Confidence is halved. |
+| `vision.pile_regions` | false | true | Every stone-like region inside a pile is also reported as a coloured, not pickable observation (beside the pile's "?" blob, which stays). |
+| `autonomy.commit_target` | false | true | A locked stone stays locked while a stone of its colour is still seen at its spot, even when vision no longer offers it as a target; a neighbour of another colour no longer breaks the lock. |
+| `autonomy.skip_alone_s` | null | 6 | A stone skipped after a failed attempt (25 s) is retried after 6 s when it is the only stone on offer, instead of parking. |
+
+`pile_outermost` and `pile_regions` need `pile_edge_pixels` = `nearest`. Evidence (replay of
+three recorded runs, simulator) is in [CHANGELOG.md](CHANGELOG.md), 2026-10-01 "V1 / V2".
+
 Automatic wall recovery now uses a live AprilTag from the full camera picture,
 including just outside the calibrated field. It stops, makes a short inward
 movement, then checks the camera again. Missing tags and blocked escapes stop
@@ -329,6 +361,7 @@ deployment and status meanings. Simulation does not validate real motor response
 start field checks with one stone.
 
 ```bash
+python autonomy2.py <ESP_IP> --camera 1 --record  # V2 (same flags as autonomy.py)
 python autonomy.py --sim --show                   # simulated robot + field, watch it (q quits)
 python autonomy.py --sim --noise --scenario pile  # with pose noise, latency, dropped tags, failed grabs
 python autonomy.py --sim --field-physics          # + MIN_DUTY, spin stalls, walls, tag loss near edges (fitted to field traces)
@@ -339,7 +372,9 @@ python -m unittest discover -s tests              # includes simulated runs and 
 
 | File | Role |
 | --- | --- |
-| `autonomy.py` | Planner state machine (SEARCH → GOTO_STAGE → ALIGN → APPROACH → GRIP → CARRY → RELEASE → BACKOFF) and the sim/real runners |
+| `autonomy.py` | Planner state machine (SEARCH → GOTO_STAGE → ALIGN → APPROACH → GRIP → CARRY → RELEASE → BACKOFF) and the sim/real runners; runs V1 |
+| `autonomy2.py` | Runs V2: the same program with the V2 switches |
+| `profiles.py` | The V1 and V2 switch sets, and the vision switches `--set` accepts by name |
 | `perception.py` | Camera frame → robot pose + stones in mm; masks the robot's footprint out of detection |
 | `sim.py` | Simulated robot/field (firmware behaviour, wheels, gripper, zones, simple camera) |
 | `fake_robot.py` | Firmware stand-in on UDP 4211 for `teleop.py` tests without hardware |

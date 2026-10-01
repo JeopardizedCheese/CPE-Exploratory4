@@ -32,7 +32,7 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 
 ## Open work, in the user's priority order
 
-0. **ON HOLD (user, 2026-10-01) until the mini-field test is done. Then: build the pile-mode fix** per [PILE_FIX_PLAN.md](PILE_FIX_PLAN.md): test-first, `vision.pile_edge_pixels` switch (default `"nearest"`), `--set vision.*`, acceptance bar before pushing. Its "Related, not in scope" section lists the other 2026-10-01 findings (planner skip list / wall-margin rejections, parallax robot mask, shadow rule) that are still undecided.
+0. **V1 / V2 (built 2026-10-01, local, not pushed).** `autonomy.py` = V1 (unchanged), `autonomy2.py` = V2 (pile fix per [PILE_FIX_PLAN.md](PILE_FIX_PLAN.md) + outermost pile stone + buried-stone observations + target commitment + `skip_alone_s`); switches in `profiles.py`, same `calib.json`, same flags. Evidence in CHANGELOG "V1 / V2 split". Open: the user reviews the crop sheets in `evidence/v2-replay/` (acceptance bar item 3) before anything is pushed; then a field run of each version. Still undecided from the 2026-10-01 study: wall keep-out testing only vision's one `approach_deg`, parallax robot mask (hull), shadow rule, and the prototype `vision.robot_approach "free"` (local branch `proto/robot-side-approach`).
 1. **Analyse the next recorded field run** (user/teammate will supply `runs/autonomy/<time>/` with `trace.jsonl` + `video.avi`): check pulse behaviour via trace keys `turn_phase`, `turn_pulse_s`, `turn_planned_deg`, `turn_moved_deg`, `pulse_gain`, `stalled`, `predict_mm`, `backoff_mm`. Compare real pulse rotation with `PULSE_TABLE`. New: check wall recovery on the real robot (`wall_phase`, `wall_reason`, `wall_clearance_mm`; how far one 0.15 s drive pulse and one 0.2 s turn pulse really move; whether a robot pinned on a wall gets free). `WALL_RECOVERY.md` has a field check procedure.
 2. **Stop overshoot in APPROACH** (analysed 2026-09-30, user has not chosen yet): options offered, in the suggested order: (a) bench test firmware short-brake (`inengmotor.brake()`) on a zero command vs coast — needs a reflash, and check the driver chip really brakes with both inputs high; (b) speed-proportional stop lead in APPROACH only (`grip_tol + speed × stop_lead_s`), test-first; (c) a coast term in `sim.py` so (b) can be validated. Fallback: pulse-driving APPROACH like pulse turning (precise, slower).
 3. **Drive floor from the duty sweep**: `motion_control.py --test-duty` (forward/left/right, `runs/motion/`) gives the lowest duty that reliably moves and turns the robot on a charged battery. Use it as `--set min_duty=X` for autonomy (no reflash); once settled, put it in `calib.json` or `MIN_DUTY`. `PULSE_TABLE` and `sim.FIELD_PARAMS` (stall_duty 0.65 assumed) are fitted at 0.71 and need a refit from the new runs.
@@ -56,6 +56,9 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 ## Useful commands
 
 ```bash
+.venv/bin/python autonomy2.py <ESP_IP> --camera 1 --record   # V2 (same flags as autonomy.py)
+.venv/bin/python detect_live.py 1 --v2                        # preview V2 vision
+.venv/bin/python sim_bench.py --v2                            # V2 planner switches in the simulator
 .venv/bin/python sim_bench.py [--physics charged|low-battery|ideal] [--set key=value]
 .venv/bin/python autonomy.py --sim --field-physics [charged|low-battery] --show
 .venv/bin/python autonomy.py <ESP_IP> --camera 1 --record      # real run
