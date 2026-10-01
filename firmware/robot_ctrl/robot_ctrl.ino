@@ -30,6 +30,9 @@ uint32_t lastSeq = 0;
 unsigned long lastRx = 0, lastDrive = 0, lastStatus = 0, lastLoop = 0;
 IPAddress peerIp;
 uint16_t peerPort = 0;
+IPAddress announcedIp;
+bool udpReady = false;
+unsigned long lastBindAttempt = 0;
 
 float cmdL = 0, cmdR = 0, outL = 0, outR = 0;   // -1..1: commands/outputs, NOT measured speeds
 bool directDuty = false;
@@ -114,6 +117,39 @@ void enter(State s, const char *why) {
 }
 
 // ---------------------------------------------------------------- network
+void updateNetwork(unsigned long now) {
+  IPAddress ip = WiFi.localIP();
+  if (WiFi.status() != WL_CONNECTED || ip == IPAddress(0, 0, 0, 0)) {
+    if (udpReady) {
+      Serial.println("Wi-Fi disconnected; wheels stop. Waiting for a new IP.");
+      motorsOff();
+      udp.stop();
+      udpReady = false;
+      peerPort = 0;
+    }
+    return;
+  }
+  if (udpReady && ip == announcedIp) return;
+  if (udpReady) {
+    motorsOff();
+    udp.stop();
+    udpReady = false;
+    peerPort = 0;
+  }
+  if (now - lastBindAttempt < 1000) return;
+  lastBindAttempt = now;
+  if (!udp.begin(UDP_PORT)) {
+    Serial.println("UDP bind failed; retrying.");
+    return;
+  }
+  udpReady = true;
+  announcedIp = ip;
+  Serial.printf("robot_ctrl network ready. IP %s gateway %s subnet %s udp/%d (%s)\n",
+                ip.toString().c_str(), WiFi.gatewayIP().toString().c_str(),
+                WiFi.subnetMask().toString().c_str(), UDP_PORT,
+                USE_STATIC_IP ? "static" : "DHCP");
+}
+
 void handlePacket(char *buf, unsigned long now) {
   JsonDocument doc;
   if (deserializeJson(doc, buf) || doc["v"] != 3 || !doc["s"].is<const char *>() ||
@@ -200,6 +236,10 @@ void sendStatus(unsigned long now) {
   doc["session"] = activeSession;
   doc["rx_age_ms"] = now - lastRx;
   doc["rssi"] = WiFi.RSSI();
+  doc["grip_open_deg"] = GRIP_OPEN_DEG;
+  doc["grip_close_deg"] = GRIP_CLOSE_DEG;
+  doc["servo_min_deg"] = SERVO_MIN_DEG;
+  doc["servo_max_deg"] = SERVO_MAX_DEG;
   JsonArray s = doc["servo"].to<JsonArray>();   // kept as a list: the PC side reads servo[0]
   s.add(roundf(servoPos));
   char out[512];
@@ -218,17 +258,20 @@ void setup() {
   Serial.printf("\nreset reason: %d\n", (int)esp_reset_reason());
   if (STATUS_LED >= 0) pinMode(STATUS_LED, OUTPUT);
   setupServo();                        // after setupMotors: the servo gets its own PWM channel
+  WiFi.setHostname(WIFI_HOSTNAME);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);                // lower latency
 #if USE_STATIC_IP
-  WiFi.config(IPAddress(STATIC_IP), IPAddress(GATEWAY_IP), IPAddress(SUBNET_IP), IPAddress(GATEWAY_IP));
+  if (!WiFi.config(IPAddress(STATIC_IP), IPAddress(GATEWAY_IP), IPAddress(SUBNET_IP), IPAddress(GATEWAY_IP)))
+    Serial.println("Static IP configuration failed; check config.h.");
 #endif
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) delay(100);
-  WiFi.setAutoReconnect(true);
-  udp.begin(UDP_PORT);
-  Serial.printf("robot_ctrl ready. IP %s udp/%d\n", WiFi.localIP().toString().c_str(), UDP_PORT);
+  if (WiFi.status() != WL_CONNECTED)
+    Serial.println("Wi-Fi not connected. Check hotspot name/password and 2.4 GHz compatibility.");
+  updateNetwork(millis());
   lastLoop = millis();
 }
 
@@ -237,10 +280,11 @@ void loop() {
   float dt = (now - lastLoop) / 1000.0f;
   lastLoop = now;
 
-  pollUdp(now);
+  updateNetwork(now);
+  if (udpReady) pollUdp(now);
 
   if (state == RUNNING) {
-    if (now - lastDrive > DRIVE_TIMEOUT_MS || WiFi.status() != WL_CONNECTED) cmdL = cmdR = 0;
+    if (now - lastDrive > DRIVE_TIMEOUT_MS || !udpReady) cmdL = cmdR = 0;
   } else {
     cmdL = cmdR = 0;
   }
@@ -253,7 +297,7 @@ void loop() {
   }
   applyMotors();
   updateServo(dt);
-  sendStatus(now);
+  if (udpReady) sendStatus(now);
 
   if (STATUS_LED >= 0) digitalWrite(STATUS_LED, state == RUNNING ? HIGH : LOW);
   delay(2);

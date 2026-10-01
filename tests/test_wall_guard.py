@@ -216,7 +216,7 @@ class PlannerRecoveryTests(unittest.TestCase):
             self.assertIsNone(p.debug['wall_command_until'])
 
     def test_grip_and_release_finish_while_stationary_before_recovery(self):
-        for state, target, next_state in [('GRIP', 40, 'CARRY'), ('RELEASE', 0, 'BACKOFF')]:
+        for state, target, next_state in [('GRIP', 70, 'CARRY'), ('RELEASE', 0, 'BACKOFF')]:
             p = Planner(config())
             p.state, p.carrying = state, 2
             result = p.step(.1, pose(100, 600, 180, .1), [], [], {'state': 'RUNNING', 'servo': [target]})

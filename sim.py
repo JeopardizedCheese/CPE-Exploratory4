@@ -35,7 +35,7 @@ DEFAULT_PARAMS = {
     'axle_offset_mm': 0.0,       # tag centre is this far ahead of the wheel axle
     'ramp_per_s': 3.0,
     'servo_deg_per_s': 180.0,
-    'grip_servo': 0, 'grip_open': 0, 'grip_close': 40,
+    'grip_servo': 0, 'grip_open': 0, 'grip_close': 70,
     'servo_start': [90],
     'grip_reach_mm': 25.0,       # stone centre must be within this of the grip point (forward)
     'grip_side_mm': 18.0,        #   ... and this sideways
@@ -278,14 +278,16 @@ class SimRobot:
             Pose(self.x, self.y, math.degrees(self.h), 0, 0, 0, now), self.footprint)]
         visible = [s for s in self.stones if s.state == 'floor' and not in_polygon(s.x, s.y, body)
                    and not any(math.hypot(s.x - zx, s.y - zy) <= zr + 20 for zx, zy, zr in self.zones.values())]
-        observations = [{'color': s.color, 'x': s.x, 'y': s.y} for s in visible]
+        observations = [{'color': s.color, 'x': s.x, 'y': s.y, 'radius_mm': STONE_R} for s in visible]
         targets = []
         for s in visible:
             approach = self._approach(s, visible, body)
             if approach is not False:
-                t = {'color': s.color, 'x': round(s.x, 1), 'y': round(s.y, 1), 'confidence': 0.8}
+                t = {'color': s.color, 'x': round(s.x, 1), 'y': round(s.y, 1),
+                     'confidence': 0.8, 'radius_mm': STONE_R}
                 if approach is not None:
                     t['approach_deg'] = approach
+                    t['approach_options'] = [approach]
                 targets.append(t)
         return pose, targets, observations
 

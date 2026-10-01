@@ -1,0 +1,269 @@
+{
+  "source_run": "20260930-062142-447604",
+  "config": {
+    "arena": {
+      "size_mm": [
+        2100,
+        1200
+      ],
+      "mm_per_px": 3,
+      "corners_px": [
+        [
+          3,
+          2
+        ],
+        [
+          635,
+          1
+        ],
+        [
+          636,
+          423
+        ],
+        [
+          1,
+          430
+        ]
+      ],
+      "source_size_px": [
+        640,
+        480
+      ]
+    },
+    "robot_tag": {
+      "id": 0,
+      "family": "36h11",
+      "size_mm": 120,
+      "height_mm": 185,
+      "camera_height_mm": 1815,
+      "camera_floor_xy_mm": [
+        1100,
+        600
+      ],
+      "grip_offset_mm": [
+        135,
+        0
+      ],
+      "axle_offset_mm": -40,
+      "size_tolerance": 0.25,
+      "heading_offset_deg": 0,
+      "footprint_mm": {
+        "front": 130,
+        "back": 90,
+        "left": 75,
+        "right": 75
+      },
+      "grip_calibrated": true,
+      "footprint_margin_mm": 0
+    },
+    "zones": {
+      "6_lime": {
+        "center_mm": [
+          246.0,
+          355.5
+        ],
+        "radius_mm": 113.3
+      },
+      "3_crimson": {
+        "center_mm": [
+          718.1,
+          249.9
+        ],
+        "radius_mm": 106.1
+      },
+      "2_cyan": {
+        "center_mm": [
+          1378.8,
+          235.5
+        ],
+        "radius_mm": 118.0
+      },
+      "1_violet": {
+        "center_mm": [
+          220.6,
+          846.0
+        ],
+        "radius_mm": 110.0
+      },
+      "5_skyblue": {
+        "center_mm": [
+          777.0,
+          876.0
+        ],
+        "radius_mm": 115.0
+      },
+      "4_orange": {
+        "center_mm": [
+          1332.0,
+          861.0
+        ],
+        "radius_mm": 111.3
+      }
+    },
+    "autonomy": {
+      "cruise": 0.3,
+      "grip_open": 0,
+      "grip_close": 70,
+      "approach_max_side_mm": 11,
+      "min_duty": 0.65
+    }
+  },
+  "frames": [
+    {
+      "video_frame": 938,
+      "t": 11576.256085255,
+      "pose": {
+        "x": 1534.13,
+        "y": 949.77,
+        "heading_deg": 96.93,
+        "grip_x": 1517.85,
+        "grip_y": 1083.79,
+        "side_mm": 129.67,
+        "t": 11576.19
+      },
+      "observation_list": [
+        {
+          "color": 0,
+          "x": 897.3,
+          "y": 433.7
+        },
+        {
+          "color": 0,
+          "x": 921.3,
+          "y": 826.1
+        },
+        {
+          "color": 0,
+          "x": 1559.6,
+          "y": 844.7
+        },
+        {
+          "color": 0,
+          "x": 1619.5,
+          "y": 992.9
+        },
+        {
+          "color": 1,
+          "x": 952.2,
+          "y": 935.5
+        },
+        {
+          "color": 0,
+          "x": 1434.6,
+          "y": 966.3
+        },
+        {
+          "color": 5,
+          "x": 792.0,
+          "y": 1029.6
+        },
+        {
+          "color": 0,
+          "x": 1413.5,
+          "y": 1020.0
+        }
+      ],
+      "perception": "ok",
+      "wall_reason": "wall_no_clear_escape"
+    },
+    {
+      "video_frame": 1227,
+      "t": 11591.680520712,
+      "pose": {
+        "x": 1597.64,
+        "y": 1034.1,
+        "heading_deg": 157.14,
+        "grip_x": 1473.25,
+        "grip_y": 1086.54,
+        "side_mm": 130.97,
+        "t": 11591.64
+      },
+      "observation_list": [
+        {
+          "color": 0,
+          "x": 896.8,
+          "y": 432.9
+        },
+        {
+          "color": 1,
+          "x": 952.0,
+          "y": 934.7
+        },
+        {
+          "color": 0,
+          "x": 1713.7,
+          "y": 1038.2
+        },
+        {
+          "color": 0,
+          "x": 1537.3,
+          "y": 965.9
+        },
+        {
+          "color": 5,
+          "x": 791.1,
+          "y": 1030.1
+        },
+        {
+          "color": 0,
+          "x": 1431.0,
+          "y": 1078.1
+        }
+      ],
+      "perception": "ok",
+      "wall_reason": "wall_no_clear_escape"
+    },
+    {
+      "video_frame": 1288,
+      "t": 11595.057023415,
+      "pose": {
+        "x": 1599.04,
+        "y": 1033.55,
+        "heading_deg": 157.28,
+        "grip_x": 1474.51,
+        "grip_y": 1085.69,
+        "side_mm": 130.72,
+        "t": 11595.02
+      },
+      "observation_list": [
+        {
+          "color": 0,
+          "x": 896.2,
+          "y": 432.6
+        },
+        {
+          "color": 0,
+          "x": 921.3,
+          "y": 826.1
+        },
+        {
+          "color": 1,
+          "x": 952.1,
+          "y": 934.3
+        },
+        {
+          "color": 0,
+          "x": 1713.4,
+          "y": 1037.9
+        },
+        {
+          "color": 0,
+          "x": 1536.6,
+          "y": 966.2
+        },
+        {
+          "color": 5,
+          "x": 790.8,
+          "y": 1029.7
+        },
+        {
+          "color": 0,
+          "x": 1431.9,
+          "y": 1080.5
+        }
+      ],
+      "perception": "ok",
+      "wall_reason": "wall_no_clear_escape"
+    }
+  ]
+}

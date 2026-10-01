@@ -1,5 +1,50 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01: crowded-pile selection and safe pickup retreat
+
+**EN**
+- Split oversized same-colour blobs with distance-transform peaks and watershed only when the peaks have a clear saddle and each resulting region has plausible area/extent; ambiguous blobs remain unpickable.
+- Rank all clear jaw-entry headings by approach flexibility, confidence, route length and recent failure history. Plan around observed pile/stone extents using a bounded A* grid and a circular robot sweep envelope for staging, parking and carry routes; stop with a specific reason when no route is available.
+- After the close servo reaches its configured angle, reverse in camera-measured pulses on the entry heading (at least 120 mm, up to 320 mm) and permit a turn only when the observed body sweep is clear. A blocked retreat stays stopped.
+- Keep geometry provisional: jaw lane 60×80 mm, grip offset `[197, -4]` mm and front footprint 235 mm still require hardware measurement. The 20 mm fallback obstacle radius follows the simulator's nominal 40 mm stone, not a field measurement.
+- No automated tests, complete ESP32 build, calibration session or robot trial was run for this update.
+
+**TH**
+- แยก blob ใหญ่สีเดียวกันด้วย distance-transform peaks และ watershed เฉพาะเมื่อยอดกับร่องแบ่งชัดและขนาดแต่ละส่วนสมเหตุผล; blob ที่กำกวมจะไม่ถูกเลือกคีบ
+- จัดอันดับทุกทิศทางเข้าที่ผ่านตามจำนวนทางเข้า confidence ระยะ route และประวัติที่คีบพลาด วางทาง A* รอบขนาดกอง/หินที่เห็น โดยขยายสิ่งกีดขวางด้วยวงกวาดตัวหุ่นแบบวงกลม ใช้กับทางไปจุดเตรียม จุดจอด และขณะขนหิน; หากไม่มีทางจะหยุดพร้อม reason
+- หลัง servo ปิดถึงมุมที่ตั้งไว้ จะถอยเป็นช่วงที่วัดจากกล้องตาม heading เดิม (อย่างน้อย 120 มม. สูงสุด 320 มม.) และหมุนต่อเมื่อวงกวาดจากภาพไม่มีสิ่งกีดขวาง ถ้าทางถอยติดจะหยุด
+- เรขาคณิตยังเป็นค่าตั้งต้น: ช่องปากคีบ 60×80 มม., grip offset `[197, -4]` มม. และ footprint หน้า 235 มม. ต้องวัดกับหุ่นจริง ส่วนรัศมีสำรอง 20 มม. อิงหิน 40 มม. ในตัวจำลอง ไม่ใช่ค่าที่วัดสนาม
+- อัปเดตนี้ยังไม่ได้รันเทสต์อัตโนมัติ สร้างเฟิร์มแวร์ ESP32 เต็มชุด ทำ calibration หรือทดลองกับหุ่นจริง
+
+## 2026-09-30: changing fields and iPhone hotspot preparation
+
+**EN**
+- Correct a missed firmware limit: close was set to 70 degrees but `SERVO_MAX_DEG` still clamped it to 55. Set the limit to 70 and fail compilation for out-of-range open/close targets; expose the configured angles/limits in status.
+- Default to DHCP instead of the old phone's static subnet. Announce the assigned address after connection/reconnection, retry UDP binding, and clear wheel commands/old status peer when the link is lost or its IP changes.
+- Add `network_check.py`, which sends only protocol pings and checks status and reported servo limits, without actuating the robot.
+- Document fresh field/camera/color calibration, measured gripper geometry, an iPhone setup sequence and the remaining dense-pile routing/segmentation work in `FIELD_PREPARATION_TH.md`. Correct obsolete firmware/button/setup instructions in `README_ROBOT.md`.
+- Validation: 189 tests pass, including actual servo/network helper code compiled against host stubs and a loopback UDP checker test. No ESP32 build/upload or physical iPhone/robot trial.
+
+**TH**
+- แก้เพดาน servo ที่ยังเป็น 55° ให้รองรับปิด 70° และตรวจค่าขัดกันตั้งแต่คอมไพล์
+- เปลี่ยนค่าเริ่มต้นเป็น DHCP สำหรับ hotspot ใหม่ พร้อมแสดง IP จริงหลังเชื่อมต่อ และเพิ่มเครื่องมือตรวจเครือข่ายที่ส่งเฉพาะ ping
+- เพิ่มคู่มือภาษาไทยสำหรับย้ายสนาม/กล้อง ใช้ iPhone hotspot และแผนทำเส้นทางอ้อมกองใหญ่ โดยระบุชัดว่างานกองส่วนใดยังไม่เสร็จ
+
+## 2026-09-30: stop before gripping and recover beside piles
+
+**EN**
+- Use `CAPTURE` to stop and remeasure a stone already between the jaws before closing. Near-contact approach uses bounded straight pulses, waits for the camera to show rest, and retreats before turning when a stone is too close and off-center.
+- Detect local jaw stones separately from navigation masks; project the raised robot body into the image so roof/finger blobs do not block wall recovery. Allow an escape that moves away from an object already inside collision padding.
+- Set close to 70 degrees throughout firmware, planner, simulator and firmware check. A reported close-angle mismatch stops in `GRIP_BLOCKED`.
+- Supply provisional grip offset `[197, -4]` mm and front footprint 235 mm, explicitly uncalibrated. The stationary video supports the offset estimate; confirm it on the robot. The reference movement later in the video still requires field recalibration.
+- Add regression coverage and a small recorded-position fixture. See [PICKUP_RECOVERY.md](PICKUP_RECOVERY.md) for evidence, setup and validation limits.
+
+**TH**
+- เพิ่ม `CAPTURE` ให้หยุดและวัดตำแหน่งหินอีกครั้งก่อนคีบ เมื่อเข้าใกล้หินจะขยับสั้น ๆ แล้วรอกล้องยืนยันว่าหยุด หากหินอยู่ชิดปากคีบแต่เยื้องข้าง จะตรวจทางถอยก่อนหมุนจัดแนวใหม่
+- แยกการตรวจหินในปากคีบจากพื้นที่บังตัวหุ่น และชดเชยภาพตัวหุ่นที่สูงจากพื้น เพื่อไม่ให้หลังคาหรือปากคีบกลายเป็นสิ่งกีดขวางปลอม อนุญาตให้ถอยออกห่างจากหินที่แตะขอบระยะเผื่อได้
+- ตั้งค่าปิดปากคีบเป็น 70 องศาให้ตรงกัน หากเฟิร์มแวร์รายงานมุมไม่ตรงจะหยุดที่ `GRIP_BLOCKED`
+- ค่า grip offset `[197, -4]` มม. และขอบหน้าหุ่น 235 มม. เป็นค่าประมาณที่ต้องวัดยืนยัน กล้องหรือสนามที่ขยับยังต้อง calibrate ใหม่ รายละเอียดอยู่ใน `PICKUP_RECOVERY.md`
+
 ## 2026-09-30: wall keep-out and wall recovery (PR #2 + fixes)
 
 **EN**

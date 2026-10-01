@@ -128,9 +128,21 @@ class WallGuard:
         # The held stone is masked by perception. Do not drive over observed stones
         # or unknown objects, including objects already touching the robot's edge.
         for ob in observations:
+            # An object already inside the padding may be escaped by moving away.
+            # Requiring an empty padding ring at the start traps a robot beside a pile.
+            def separation(p):
+                h = math.radians(p.heading_deg)
+                dx, dy = ob['x']-p.x, ob['y']-p.y
+                f, r = dx*math.cos(h)+dy*math.sin(h), -dx*math.sin(h)+dy*math.cos(h)
+                df = max(-self.fp['back']-f, f-self.fp['front'])
+                dr = max(-self.fp['left']-r, r-self.fp['right'])
+                return math.hypot(max(df, 0), max(dr, 0)) + min(max(df, dr), 0)
+            d0 = separation(initial)
+            touching_padding = self._contains(initial, ob)
             for p in poses[1:]:
-                if self._contains(p, ob) and not self._contains(initial, ob, margin=0):
-                    return False
+                if self._contains(p, ob):
+                    if not touching_padding or separation(p) < d0-1:
+                        return False
         if carrying is not None:
             for key, zone in self.zones.items():
                 if int(str(key).split('_')[0]) == carrying:

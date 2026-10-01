@@ -29,7 +29,7 @@ from robot_pose import RobotPoseEstimator
 from vision import mask_for, warp
 
 
-def stone_in_jaws(frame_rect, cfg, pose, per_px, stone_h, cam_xy, cam_h):
+def stone_in_jaws(frame_rect, cfg, pose, per_px, stone_h, cam_xy, cam_h, color=None):
     """Centroid (mm, floor level) of the coloured blob in front of the robot, or None."""
     hsv = cv2.cvtColor(frame_rect, cv2.COLOR_BGR2HSV)
     h = math.radians(pose.heading_deg)
@@ -37,6 +37,8 @@ def stone_in_jaws(frame_rect, cfg, pose, per_px, stone_h, cam_xy, cam_h):
     r = np.array([-math.sin(h), math.cos(h)])
     best = None
     for key, ranges in cfg['hsv'].items():
+        if color is not None and int(str(key).split('_')[0]) != color:
+            continue
         if not ranges:
             continue
         mask = mask_for(hsv, ranges)
@@ -71,8 +73,12 @@ def main():
     ap.add_argument('--config', type=Path, default=Path(__file__).with_name('calib.json'))
     ap.add_argument('--axle', action='store_true', help='measure axle offset (spin the robot on the spot)')
     ap.add_argument('--samples', type=int, default=60)
+    ap.add_argument('--color', type=int, choices=range(1, 7), help='color ID of the stone held in the closed jaws')
+    ap.add_argument('--max-spread-mm', type=float, default=10, help='refuse a noisy/ambiguous grip measurement')
     ap.add_argument('--write', action='store_true', help='save the result to the config')
     args = ap.parse_args()
+    if not math.isfinite(args.max_spread_mm) or args.max_spread_mm <= 0:
+        ap.error('--max-spread-mm must be positive and finite')
     cfg = json.loads(args.config.read_text())
     est = RobotPoseEstimator(cfg)
     per_px = float(cfg['arena'].get('mm_per_px', 2))
@@ -99,7 +105,7 @@ def main():
                 centres.append((pose.x, pose.y))
                 headings.append(math.radians(pose.heading_deg))
             else:
-                hit = stone_in_jaws(view, cfg, pose, per_px, stone_h, est.cam_xy, est.cam_h)
+                hit = stone_in_jaws(view, cfg, pose, per_px, stone_h, est.cam_xy, est.cam_h, args.color)
                 if hit:
                     grips.append(hit[1:3])
                     cv2.circle(view, (round((pose.x + 0) / per_px), round(pose.y / per_px)), 4, (255, 0, 255), -1)
@@ -133,6 +139,8 @@ def main():
         fwd, side = np.median(g, axis=0)
         spread = np.percentile(np.abs(g - [fwd, side]), 90, axis=0)
         print(f'grip_offset_mm = [{fwd:.0f}, {side:.0f}]   (90% of frames within +/-{spread.max():.0f} mm)')
+        if spread.max() > args.max_spread_mm:
+            raise SystemExit('Measurement too variable; not saved. Hold one known-color stone still, use --color, and remove nearby stones.')
         old = tag.get('grip_offset_mm')
         if old:
             print(f'previous value: {old}')
