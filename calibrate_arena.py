@@ -5,13 +5,20 @@ from pathlib import Path
 import cv2
 import numpy as np
 from vision import warp
+from measure_camera_floor import estimate_camera_floor, draw_floor_measurement
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('camera_index', nargs='?', type=int)
     p.add_argument('--config', type=Path, default=Path(__file__).with_name('calib.json'))
+    p.add_argument('--camera-downward', action='store_true',
+                   help='Estimate camera_floor_xy_mm for a confirmed perpendicular camera')
+    p.add_argument('--optical-center', type=float, nargs=2, metavar=('CX', 'CY'),
+                   help='Optical-axis pixel in the original frame; default midpoint is approximate')
     args = p.parse_args()
+    if args.optical_center is not None and not args.camera_downward:
+        p.error('--optical-center requires --camera-downward')
     cfg = json.loads(args.config.read_text())
     cam = args.camera_index if args.camera_index is not None else cfg.get('camera_index', 0)
     cap = cv2.VideoCapture(cam)
@@ -57,6 +64,13 @@ def main():
                 print('Invalid corner order; undo and select clockwise corners.')
         cfg.setdefault('arena', {'size_mm': [2100, 1200], 'mm_per_px': 2})['corners_px'] = points.copy()
         cfg['arena']['source_size_px'] = list(raw.shape[1::-1])
+        camera_floor = None
+        if args.camera_downward:
+            camera_floor = estimate_camera_floor(points, cfg['arena']['size_mm'],
+                                                  cfg['arena']['source_size_px'], args.optical_center)
+            print('Perpendicular-camera estimate:', camera_floor['robot_tag'])
+            print('Optical-centre source:', camera_floor['measurement']['optical_center_source'])
+            print('Lens distortion is not corrected. Review before saving.')
         background = warp(raw, cfg)
         points.clear()
         polygons = []
@@ -64,6 +78,8 @@ def main():
               'or press s right away to skip and use find_zones.py. q cancels.')
         while True:
             view = background.copy()
+            if camera_floor is not None:
+                draw_floor_measurement(view, camera_floor)
             for polygon in polygons:
                 cv2.polylines(view, [np.array(polygon)], True, (0, 0, 255), 2)
             if points:
@@ -91,6 +107,10 @@ def main():
                 cfg['zones'] = {}  # Destination coordinates from an old geometry are invalid.
                 cfg['camera_index'] = cam
                 cfg['background_path'] = 'background.png'
+                if camera_floor is not None:
+                    tag = cfg.setdefault('robot_tag', {})
+                    tag.update(camera_floor['robot_tag'])
+                    tag['camera_floor_measurement'] = camera_floor['measurement']
                 if not cv2.imwrite(str(args.config.parent / 'background.png'), background):
                     raise RuntimeError('Cannot save reference')
                 args.config.write_text(json.dumps(cfg, indent=2))
