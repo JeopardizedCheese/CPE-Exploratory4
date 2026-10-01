@@ -112,6 +112,10 @@ Robot geometry (only when the arm/tag changes): `robot_tag.grip_offset_mm`, `foo
 ```
 
 **5. Real run.** Robot on the field, tag visible; q / x / ESC stops.
+Competition start position (simulated 2026-10-02 on the organisers' layout): robot **facing up or down** (along the
+start-zone line), tag about **x = 1800 mm**, y about 600 (body just inside the start zone). Then the tag is >= 260 mm
+from the right wall and wall recovery never starts. Facing the pile with the tag at ~1930 starts inside the wall margin:
+recovery can only drive forward, so any stone within ~130 mm of the jaws leaves it blocked (7 of 12 scattered runs stuck).
 ```bash
 .venv/bin/python autonomy.py  <ESP_IP> --camera 1 --record  # V1
 .venv/bin/python autonomy2.py <ESP_IP> --camera 1 --record  # V2 (run folder ends in -v2)
