@@ -1,5 +1,27 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-01 (night): gesture control rebuilt: two hands, one trained command set
+
+**EN**
+- `CHROMA-Gesture-Control/` starts over. The one-hand lever (`lever_*.py`, its docs, tests and screenshots) and the old two-hand system (drive hand in a centre box + command hand, MediaPipe canned gestures) are removed; git history keeps them.
+- Commands = the classifier's classes: `NONE`, `STOP`, `FORWARD`, `BACK`, `LEFT`, `RIGHT`, `GRIP_OPEN`, `GRIP_CLOSE`. **Either hand gives the same commands**, so the driver can swap hands. Each hand is classified separately, then combined: no fresh hand / only `NONE` → stop at once; any `STOP` → stop; two different commands → stop (`CONFLICT`); otherwise the one command shown. No centre box: the pose alone is the command. Motion needs 0.15 s steady, a grip 0.4 s and fires once (3 UDP copies, wheels at zero).
+- `+` / `-` change the speed by 0.1 in 0.1..1.0 (as `teleop.py`), at once; turns use 0.6 × speed. `--min-duty` floor, the start/RUNNING/session gate and the 300 ms firmware watchdog work as before (`gesture_link.py`, ported from the lever).
+- Trainer `gesture_collect.py`: one session per run with a fixed `--split train|validation|test`; counts per command and hand for the session and the whole split, "ready to train?" per split, next-missing (N), undo, a warning when the camera sees the other hand, and a live model check (M). Landmarks only.
+- `gesture_train.py`: fits on train sessions, picks the confidence gate on validation (fewest dangerous mistakes, i.e. a wrong motion or grip command, then most commands recognised), scores test once: accuracy, recall per command, NONE rate, dangerous mistakes, per hand, confusion table. New timestamped model each time (`models/gesture_commands_<time>.npz`); the apps take the newest.
+- `gesture_control.py`: 1280 × 720 dashboard: camera with both hand skeletons and their labels, big command tile with hold bar, speed gauge, wheel bars, per-hand status, robot status. Preview by default; `--live --robot IP` sends; `--demo` = keyboard hands.
+- `fake_robot.py` now reports `session` in its status like the firmware (`robot_ctrl.ino`), so session-checking controllers can run against it.
+- Checked: 51 gesture tests (logic, session gate, apps, trainer, train/validate/test on synthetic sessions); the webcam + MediaPipe worker runs on this laptop (~17 fps, no hand in view); against `fake_robot.py`: start → RUNNING, FORWARD 0.5/0.5, LEFT −0.3/0.3, GRIP CLOSE moves the servo, no hand → 0/0, `+` → 0.6. **No model trained yet, not tested with real hands or the robot.**
+
+**TH**
+- เริ่ม `CHROMA-Gesture-Control/` ใหม่ ลบคันโยกมือเดียว (`lever_*.py` พร้อมเอกสาร เทสต์ และภาพ) และระบบสองมือแบบเก่า (มือขับในกรอบกลาง + มือสั่งงาน, ท่าสำเร็จรูปของ MediaPipe) ยังกู้คืนได้จากประวัติ git
+- คำสั่ง = คลาสของตัวจำแนก: `NONE`, `STOP`, `FORWARD`, `BACK`, `LEFT`, `RIGHT`, `GRIP_OPEN`, `GRIP_CLOSE` **มือไหนก็สั่งได้เหมือนกัน** สลับมือได้เมื่อเมื่อย จำแนกทีละมือแล้วรวมกัน: ไม่เห็นมือ/เห็นแต่ `NONE` → หยุดทันที, มือไหนทำ `STOP` → หยุด, สองมือทำคำสั่งต่างกัน → หยุด (`CONFLICT`), นอกนั้นใช้คำสั่งที่เห็น ไม่มีกรอบกลางแล้ว ท่ามืออย่างเดียวคือคำสั่ง คำสั่งขับต้องนิ่ง 0.15 s คำสั่งหนีบต้องนิ่ง 0.4 s และส่งครั้งเดียว (ส่ง UDP 3 ชุด ล้อเป็นศูนย์)
+- `+` / `-` ปรับความเร็วทีละ 0.1 ในช่วง 0.1..1.0 (เหมือน `teleop.py`) มีผลทันที เลี้ยวใช้ 0.6 × ความเร็ว `--min-duty`, การรอสถานะ RUNNING/session และ watchdog 300 ms ของ firmware ทำงานเหมือนเดิม (`gesture_link.py` ยกมาจากคันโยก)
+- โปรแกรมเก็บข้อมูล `gesture_collect.py`: เปิดหนึ่งครั้ง = หนึ่ง session กำหนด `--split train|validation|test` ตายตัว แสดงจำนวนต่อคำสั่งต่อมือของ session และของทั้งชุด, บอกว่าแต่ละชุดพร้อมเทรนหรือยัง, ไปคำสั่งที่ขาด (N), ย้อน take, เตือนเมื่อกล้องเห็นเป็นอีกมือ และลองโมเดลสด (M) เก็บแค่ landmark
+- `gesture_train.py`: สอนด้วยชุด train, เลือกเกณฑ์ความมั่นใจด้วยชุด validation (คำสั่งผิดที่อันตราย คือขับผิดหรือหนีบผิด น้อยที่สุดก่อน แล้วจำคำสั่งได้มากที่สุด), วัดชุด test ครั้งเดียว: accuracy, recall ต่อคำสั่ง, สัดส่วน NONE, คำสั่งผิดอันตราย, แยกมือ, ตาราง confusion ได้ไฟล์โมเดลใหม่พร้อมเวลาทุกครั้ง (`models/gesture_commands_<เวลา>.npz`) โปรแกรมใช้ไฟล์ล่าสุด
+- `gesture_control.py`: หน้าจอ 1280 × 720: ภาพกล้องพร้อมโครงมือทั้งสองข้างและป้ายคำสั่ง, ช่องคำสั่งใหญ่พร้อมแถบนับเวลานิ่ง, มาตรวัดความเร็ว, แถบล้อ, สถานะแต่ละมือ, สถานะหุ่น ค่าเริ่มต้นเป็น preview; `--live --robot IP` ส่งจริง; `--demo` = มือจำลองจากคีย์บอร์ด
+- `fake_robot.py` รายงาน `session` ใน status แบบเดียวกับ firmware (`robot_ctrl.ino`) โปรแกรมที่ตรวจ session จึงทดสอบกับมันได้
+- ตรวจแล้ว: เทสต์ gesture 51 ข้อ (ตรรกะ, การรอ session, แอป, โปรแกรมเก็บข้อมูล, train/validate/test บนข้อมูลสังเคราะห์); กล้องเว็บแคม + MediaPipe ทำงานบนโน้ตบุ๊กนี้ (~17 fps, ไม่มีมือในภาพ); กับ `fake_robot.py`: start → RUNNING, FORWARD 0.5/0.5, LEFT −0.3/0.3, GRIP CLOSE ขยับเซอร์โว, ไม่เห็นมือ → 0/0, `+` → 0.6 **ยังไม่มีโมเดลที่เทรนแล้ว ยังไม่ได้ทดสอบกับมือจริงหรือหุ่นจริง**
+
 ## 2026-10-01 (evening): V3 = V2 + grip check by the gripper camera (autonomy3.py)
 
 **EN**

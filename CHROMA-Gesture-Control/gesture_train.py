@@ -1,190 +1,228 @@
-"""Train an MLP on your recordings, holding out entire recording sessions."""
+"""Train the command classifier from gesture_collect.py sessions.
+
+TRAIN sessions fit the model, VALIDATION sessions choose the confidence gate (threshold/margin),
+TEST sessions are scored once at the end. A session is never split across sets.
+"""
 import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import time
 import warnings
 
 import numpy as np
 
-from gesture_logic import classify_landmarks
-from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABELS, GestureModel,
-                           export_model, gated_labels)
+from gesture_collect import MIN_SAMPLES, read_session
+from gesture_logic import GRIP, MOTION
+from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABEL_SET, LABELS, REJECT, SPLITS,
+                           GestureModel, export_model, gated_labels)
 
-# Every label except UNKNOWN now triggers something (FIST = stop, V = start).
-ACTIVE = set(LABELS) - {'UNKNOWN'}
-MIN_SAMPLES = 30
+ROOT = Path(__file__).resolve().parent
+DANGEROUS = set(MOTION) | set(GRIP)        # a wrong one of these moves the robot or the gripper
+THRESHOLDS = (.5, .6, .7, .8, .85, .9, .95)
+MARGINS = (0., .1, .2, .3)
+DANGER_TOLERANCE = .002                    # accept gates within 0.2 % of the safest one, then max recall
+SHORT = {'NONE': 'NONE', 'STOP': 'STOP', 'FORWARD': 'FWD', 'BACK': 'BACK', 'LEFT': 'LEFT',
+         'RIGHT': 'RIGHT', 'GRIP_OPEN': 'OPEN', 'GRIP_CLOSE': 'CLOSE'}
 
 
 def load_recordings(directory):
-    files = sorted(Path(directory).glob('*/*.npz'))
-    if not files:
-        raise ValueError('No recordings found. Run gesture_collect.py first.')
-    xs, ys, groups, hands, inventory = [], [], [], [], []
-    seen = set()
-    for path in files:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        if digest in seen:
-            raise ValueError(f'Duplicate recording: {path}; do not copy takes between sessions')
-        seen.add(digest)
-        with np.load(path, allow_pickle=False) as data:
-            if str(data['feature_version'].item()) != FEATURE_VERSION:
-                raise ValueError(f'Wrong feature version: {path}')
-            x = np.asarray(data['X'], dtype=float)
-            if 'hand' not in data.files:
-                raise ValueError(f'Legacy one-hand recording without a hand tag: {path}. '
-                                 'Keep old sessions in gesture_data_v1/ and record new two-hand sessions.')
-            label, session = str(data['label'].item()), str(data['session'].item())
-            hand = str(data['hand'].item())
+    """-> dict of arrays x, y, hand, session, split + inventory, from every session folder."""
+    metas = sorted(Path(directory).glob('*/session.json'))
+    if not metas:
+        raise ValueError(f'No sessions in {directory}. Record with gesture_collect.py first.')
+    xs, rows, inventory, seen = [], [], [], set()
+    for meta_path in metas:
+        meta = read_session(meta_path.parent)
+        for path in sorted(meta_path.parent.glob('*.npz')):
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest in seen:
+                raise ValueError(f'Duplicate recording: {path}; do not copy takes between sessions')
+            seen.add(digest)
+            with np.load(path, allow_pickle=False) as data:
+                x = np.asarray(data['X'], dtype=float)
+                label, hand = str(data['label'].item()), str(data['hand'].item())
+                session, split = str(data['session'].item()), str(data['split'].item())
+                if (str(data['feature_version'].item()) != FEATURE_VERSION
+                        or str(data['label_set'].item()) != LABEL_SET):
+                    raise ValueError(f'Recording from another gesture system: {path}')
             if (x.ndim != 2 or x.shape[1] != FEATURE_COUNT or len(x) == 0
                     or not np.isfinite(x).all() or np.max(np.abs(x)) > 15
-                    or label not in LABELS or hand not in HANDS or not session):
+                    or label not in LABELS or hand not in HANDS
+                    or session != meta['session'] or split != meta['split']):
                 raise ValueError(f'Invalid recording: {path}')
-        xs.append(x)
-        ys.extend([label]*len(x))
-        groups.extend([session]*len(x))
-        hands.extend([hand]*len(x))
-        inventory.append({'path': str(path.resolve()), 'sha256': digest, 'label': label,
-                          'hand': hand, 'session': session, 'samples': len(x)})
-    return np.concatenate(xs), np.array(ys), np.array(groups), np.array(hands), inventory
+            xs.append(x)
+            rows += [(label, hand, session, split)] * len(x)
+            inventory.append({'path': str(path.relative_to(directory)), 'sha256': digest, 'label': label,
+                              'hand': hand, 'session': session, 'split': split, 'samples': len(x)})
+    if not xs:
+        raise ValueError('Sessions exist but hold no takes yet')
+    y, hand, session, split = (np.array(c) for c in zip(*rows))
+    return {'x': np.concatenate(xs), 'y': y, 'hand': hand, 'session': session, 'split': split,
+            'inventory': inventory}
 
 
-def session_counts(y, groups, hands):
-    return {str(g): {f'{label}/{hand}': int(np.sum((groups == g) & (y == label) & (hands == hand)))
-                     for label in LABELS for hand in HANDS}
-            for g in np.unique(groups)}
+def counts_table(d):
+    return {split: {'sessions': sorted(set(d['session'][d['split'] == split].tolist())),
+                    'samples': {f'{label}/{hand}': int(np.sum((d['split'] == split) & (d['y'] == label)
+                                                              & (d['hand'] == hand)))
+                                for label in LABELS for hand in HANDS}}
+            for split in SPLITS}
 
 
-def split_sessions(y, groups, hands, seed=42):
-    """Strictly complete sessions: 60/20/20 with five sessions, by group."""
-    counts = session_counts(y, groups, hands)
-    if len(counts) < 5:
-        raise ValueError(f'Need at least 5 independent recording sessions; found {len(counts)}. '
-                         'Record all 8 labels with both hands each time, then restart collector for a new session.')
-    incomplete = {g: {key: n for key, n in row.items() if n < MIN_SAMPLES}
-                  for g, row in counts.items() if min(row.values()) < MIN_SAMPLES}
-    if incomplete:
-        raise ValueError(f'Each session needs at least {MIN_SAMPLES} samples of every label '
-                         'from each hand. Missing/short (LABEL/hand): ' + json.dumps(incomplete))
-    ordered = np.array(sorted(counts))
-    np.random.default_rng(seed).shuffle(ordered)
-    holdout = max(1, int(len(ordered)*.2))
-    selected = {'train': ordered[2*holdout:], 'validation': ordered[:holdout],
-                'test': ordered[holdout:2*holdout]}
-    return {name: np.flatnonzero(np.isin(groups, values)) for name, values in selected.items()}
+def check_data(d):
+    problems = []
+    for split, row in counts_table(d).items():
+        if not row['sessions']:
+            problems.append(f'{split}: no session (gesture_collect.py --split {split})')
+            continue
+        short = [k for k, n in row['samples'].items() if n < MIN_SAMPLES]
+        if short:
+            problems.append(f'{split}: fewer than {MIN_SAMPLES} samples of ' + ', '.join(short))
+    if problems:
+        raise ValueError('Not enough data to train:\n  ' + '\n  '.join(problems))
 
 
 def metrics(y, predictions):
     y, predictions = np.asarray(y), np.asarray(predictions)
-    confusion = [[int(np.sum((y == truth) & (predictions == pred))) for pred in LABELS]
-                 for truth in LABELS]
-    active = np.isin(predictions, list(ACTIVE))
-    actual_active = np.isin(y, list(ACTIVE))
-    unknown = y == 'UNKNOWN'
-    wrong_commands = (predictions != y) & active
-    return {'samples': len(y), 'accuracy': float(np.mean(predictions == y)),
-            'unknown_output_rate': float(np.mean(predictions == 'UNKNOWN')),
-            'wrong_active_commands': int(wrong_commands.sum()),
-            'wrong_active_rate': float(wrong_commands.mean()),
-            'correct_active_recall': float(np.sum((predictions == y) & actual_active)/max(1, actual_active.sum())),
-            'unknown_to_active_rate': float(np.sum(unknown & active)/max(1, unknown.sum())),
-            'confusion_labels': list(LABELS), 'confusion_rows_truth_columns_prediction': confusion,
-            'per_class_recall': {label: float(np.sum((y == label) & (predictions == label))/max(1, np.sum(y == label)))
-                                 for label in LABELS}}
+    dangerous = np.isin(predictions, list(DANGEROUS)) & (predictions != y)
+    command = y != REJECT
+    return {'samples': int(len(y)), 'accuracy': float(np.mean(predictions == y)),
+            'dangerous_wrong': int(dangerous.sum()), 'dangerous_rate': float(dangerous.mean()),
+            'command_recall': float(np.sum((predictions == y) & command) / max(1, command.sum())),
+            'none_rate': float(np.mean(predictions == REJECT)),
+            'per_class_recall': {label: float(np.sum((y == label) & (predictions == label))
+                                              / max(1, np.sum(y == label))) for label in LABELS},
+            'confusion_rows_truth_columns_prediction':
+                [[int(np.sum((y == t) & (predictions == p))) for p in LABELS] for t in LABELS]}
 
 
-def train(directory, output, seed=42, threshold=.9, margin=.2, iterations=500):
-    if not .5 <= threshold <= 1 or not 0 <= margin <= 1 or iterations < 1:
-        raise ValueError('Invalid threshold, margin, or training iterations')
-    output = Path(output)
+def choose_gate(probabilities, classes, y):
+    """Safest gate on validation (within DANGER_TOLERANCE), then the most commands recognised."""
+    table = []
+    for threshold in THRESHOLDS:
+        for margin in MARGINS:
+            m = metrics(y, gated_labels(probabilities, classes, threshold, margin))
+            table.append({'threshold': threshold, 'margin': margin, 'dangerous_rate': m['dangerous_rate'],
+                          'command_recall': m['command_recall'], 'accuracy': m['accuracy']})
+    safest = min(row['dangerous_rate'] for row in table)
+    ok = [row for row in table if row['dangerous_rate'] <= safest + DANGER_TOLERANCE]
+    best = max(ok, key=lambda row: (row['command_recall'], -row['dangerous_rate'], -row['threshold']))
+    return best['threshold'], best['margin'], table
+
+
+def train(directory, output=None, seed=42, iterations=500):
+    if iterations < 1:
+        raise ValueError('iterations must be >= 1')
+    stamp = time.strftime('%Y%m%d-%H%M%S')
+    output = Path(output) if output else ROOT/'models'/f'gesture_commands_{stamp}.npz'
     report_path = output.with_suffix('.report.json')
     if output.exists() or report_path.exists():
-        raise ValueError('Output already exists. Choose a new --output filename to preserve your previous model.')
-    x, y, groups, hands, inventory = load_recordings(directory)
-    split = split_sessions(y, groups, hands, seed)
+        raise ValueError(f'{output} already exists; choose another --output')
+    d = load_recordings(directory)
+    check_data(d)
     from sklearn.neural_network import MLPClassifier
     from sklearn.preprocessing import StandardScaler
     import sklearn
-    scaler = StandardScaler().fit(x[split['train']])
-    # No internal random-frame validation; no test data in normalization or fit.
-    classifier = MLPClassifier(hidden_layer_sizes=(64, 32), activation='relu',
-                               solver='adam', alpha=.01, max_iter=iterations,
-                               early_stopping=False, random_state=seed)
+    part = {split: np.flatnonzero(d['split'] == split) for split in SPLITS}
+    x_train, y_train = d['x'][part['train']], d['y'][part['train']]
+    scaler = StandardScaler().fit(x_train)
+    classifier = MLPClassifier(hidden_layer_sizes=(64, 32), activation='relu', solver='adam', alpha=.01,
+                               max_iter=iterations, early_stopping=False, random_state=seed)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        classifier.fit(scaler.transform(x[split['train']]), y[split['train']])
-    report = {'created_utc': datetime.now(timezone.utc).isoformat(),
-              'feature_version': FEATURE_VERSION, 'sklearn_version': sklearn.__version__,
+        classifier.fit(scaler.transform(x_train), y_train)
+    proba = {split: classifier.predict_proba(scaler.transform(d['x'][idx])) for split, idx in part.items()}
+    threshold, margin, gate_table = choose_gate(proba['validation'], classifier.classes_,
+                                                d['y'][part['validation']])
+    report = {'created_utc': datetime.now(timezone.utc).isoformat(), 'model': output.name,
+              'feature_version': FEATURE_VERSION, 'label_set': LABEL_SET, 'sklearn_version': sklearn.__version__,
               'hidden_layers': [64, 32], 'seed': seed, 'threshold': threshold, 'margin': margin,
-              'scores_are_calibrated_probabilities': False, 'hardware_validated': False,
+              'gate_chosen_on': 'validation', 'gate_table_validation': gate_table,
               'training_iterations': int(classifier.n_iter_), 'training_loss': float(classifier.loss_),
-              'warnings': [str(w.message) for w in caught], 'sessions': session_counts(y, groups, hands),
-              'recordings': inventory, 'splits': {}}
-    for name, indices in split.items():
-        p = classifier.predict_proba(scaler.transform(x[indices]))
-        predicted = gated_labels(p, classifier.classes_, threshold, margin)
-        baseline = [classify_landmarks(row.reshape(21, 3)[:, :2].tolist()) for row in x[indices]]
-        report['splits'][name] = {
-            'sessions': sorted(set(groups[indices].tolist())),
-            'raw_classifier': metrics(y[indices], classifier.classes_[p.argmax(axis=1)]),
-            'with_rejection': metrics(y[indices], predicted),
-            'original_rules': metrics(y[indices], baseline),
-            'with_rejection_per_hand': {
-                hand: metrics(y[indices][hands[indices] == hand], predicted[hands[indices] == hand])
-                for hand in HANDS}}
+              'warnings': [str(w.message) for w in caught], 'data': counts_table(d),
+              'recordings': d['inventory'], 'splits': {}}
+    for split, idx in part.items():
+        predicted = gated_labels(proba[split], classifier.classes_, threshold, margin)
+        y, hands = d['y'][idx], d['hand'][idx]
+        report['splits'][split] = {
+            'with_gate': metrics(y, predicted),
+            'raw_argmax': metrics(y, classifier.classes_[proba[split].argmax(axis=1)]),
+            'per_hand': {hand: metrics(y[hands == hand], predicted[hands == hand]) for hand in HANDS}}
     report['interpretation'] = (
-        'Frame-level results on held-out sessions, not robot success rates. '
-        'UNKNOWN includes modeled other gestures and rejected predictions. '
-        'No-hand/multiple-hand loss is handled outside the classifier. '
-        'Choose thresholds on validation only; if you tune after viewing test results, '
-        'collect another untouched test session. No claim of superiority until evaluated on real data.')
+        'Frame-level results on held-out sessions, not robot success. The controller also needs a '
+        'command held 0.15 s (motion) / 0.4 s (grip) and stops on NONE, so single wrong frames rarely move '
+        'the robot. If you change anything after looking at TEST, record a new test session.')
     output.parent.mkdir(parents=True, exist_ok=True)
     export_model(output, scaler, classifier,
-                 {'threshold': threshold, 'margin': margin, 'created_utc': report['created_utc'],
-                  'seed': seed, 'training_sessions': report['splits']['train']['sessions']})
-    # Check portable inference against the actual trained implementation.
-    portable = GestureModel(output)
-    np.testing.assert_allclose(portable.probabilities(x[split['test']]),
-                               classifier.predict_proba(scaler.transform(x[split['test']])),
-                               rtol=1e-6, atol=1e-8)
+                 {'threshold': threshold, 'margin': margin, 'created_utc': report['created_utc'], 'seed': seed,
+                  'training_sessions': report['data']['train']['sessions']})
+    portable = GestureModel(output)        # numpy inference must equal scikit-learn
+    np.testing.assert_allclose(portable.probabilities(d['x'][part['test']]), proba['test'], rtol=1e-6, atol=1e-8)
     with report_path.open('x', encoding='utf-8') as f:
         json.dump(report, f, ensure_ascii=False, indent=2, allow_nan=False)
-    return report
+    return report, output
 
 
-def main():
+def format_counts(table):
+    lines = []
+    for split, row in table.items():
+        lines.append(f'{split.upper():<11} {len(row["sessions"])} session(s)')
+        lines.append(f'  {"command":<11}' + ''.join(f'{HANDS[h]:>8}' for h in HANDS))
+        for label in LABELS:
+            cells = ''.join(f'{row["samples"][f"{label}/{h}"]:>7}{"*" if row["samples"][f"{label}/{h}"] < MIN_SAMPLES else " "}'
+                            for h in HANDS)
+            lines.append(f'  {label:<11}{cells}')
+    lines.append(f'  * = below {MIN_SAMPLES}: record more before training')
+    return '\n'.join(lines)
+
+
+def format_split(name, result):
+    m = result['with_gate']
+    lines = [f'== {name.upper()}  ({m["samples"]} frames)',
+             f'  accuracy {m["accuracy"]:.1%}   commands recognised {m["command_recall"]:.1%}   '
+             f'read as NONE {m["none_rate"]:.1%}   DANGEROUS wrong {m["dangerous_wrong"]} ({m["dangerous_rate"]:.2%})',
+             '  per hand: ' + '   '.join(f'{HANDS[h]} {r["accuracy"]:.1%} (dangerous {r["dangerous_wrong"]})'
+                                        for h, r in result['per_hand'].items()),
+             '  recall:   ' + '  '.join(f'{SHORT[k]} {v:.0%}' for k, v in m['per_class_recall'].items()),
+             '  confusion (rows = shown, columns = read as):',
+             '  ' + ' ' * 7 + ''.join(f'{SHORT[k]:>7}' for k in LABELS)]
+    for label, row in zip(LABELS, m['confusion_rows_truth_columns_prediction']):
+        lines.append(f'  {SHORT[label]:>6} ' + ''.join(f'{n:>7}' for n in row))
+    return '\n'.join(lines)
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data', type=Path, default=Path(__file__).parent/'gesture_data')
-    # models/gesture_mlp.npz is the one-hand v1 model; keep it as the fallback.
-    parser.add_argument('--output', type=Path, default=Path(__file__).parent/'models/gesture_v2.npz')
-    parser.add_argument('--inspect', action='store_true', help='Show data counts without training')
+    parser.add_argument('--data', type=Path, default=ROOT/'gesture_data')
+    parser.add_argument('--output', type=Path, help='Default: models/gesture_commands_<time>.npz')
+    parser.add_argument('--inspect', action='store_true', help='Show the data per split; do not train')
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--threshold', type=float, default=.9)
-    parser.add_argument('--margin', type=float, default=.2)
     parser.add_argument('--iterations', type=int, default=500)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         if args.inspect:
-            _, y, groups, hands, _ = load_recordings(args.data)
-            print(json.dumps(session_counts(y, groups, hands), indent=2))
-            return
-        report = train(args.data, args.output, args.seed, args.threshold, args.margin, args.iterations)
+            d = load_recordings(args.data)
+            print(format_counts(counts_table(d)))
+            check_data(d)
+            print('Ready to train.')
+            return 0
+        report, output = train(args.data, args.output, args.seed, args.iterations)
     except (ValueError, OSError, KeyError) as exc:
-        parser.exit(1, f'{exc}\n')
-    print(f'Model: {args.output}\nReport: {args.output.with_suffix(".report.json")}')
-    for name in ('validation', 'test'):
-        result = report['splits'][name]['with_rejection']
-        print(f'{name}: accuracy={result["accuracy"]:.3f}, '
-              f'wrong active={result["wrong_active_commands"]}/{result["samples"]}, '
-              f'UNKNOWN outputs={result["unknown_output_rate"]:.1%}')
-        for hand, per_hand in report['splits'][name]['with_rejection_per_hand'].items():
-            print(f'  {HANDS[hand]} hand: accuracy={per_hand["accuracy"]:.3f}, '
-                  f'wrong active={per_hand["wrong_active_commands"]}/{per_hand["samples"]}')
+        print(exc)
+        return 1
+    print(format_counts(report['data']))
+    print(f'\nGate chosen on VALIDATION: threshold {report["threshold"]}, margin {report["margin"]}')
+    for name in SPLITS:
+        print(format_split(name, report['splits'][name]))
     for warning in report['warnings']:
         print(f'WARNING: {warning}')
-    print('Preview the model before connecting a robot. These are frame-level metrics, not physical validation.')
+    print(f'\nModel:  {output}\nReport: {output.with_suffix(".report.json")}')
+    print('gesture_control.py and the trainer\'s model check (M) use the newest model automatically.')
+    print('Frame-level numbers only: check it live in preview before driving the robot.')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

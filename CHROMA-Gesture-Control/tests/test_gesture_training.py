@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from pathlib import Path
 import tempfile
@@ -6,11 +7,14 @@ from unittest.mock import patch
 
 import numpy as np
 
-from gesture_collect import Recording
-from gesture_logic import GestureControl, Hand
-from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABELS, GestureModel,
-                           gated_labels, landmark_features)
-from gesture_train import load_recordings, metrics, split_sessions, train
+from gesture_collect import (MIN_SAMPLES, Recording, next_missing, readiness, render_collect, scan)
+from gesture_logic import Hand
+from gesture_model import (FEATURE_COUNT, FEATURE_VERSION, HANDS, LABEL_SET, LABELS, SPLITS,
+                           GestureModel, gated_labels, landmark_features, newest_model)
+import gesture_train
+from gesture_train import check_data, choose_gate, load_recordings, metrics, train
+
+HAS_SKLEARN = importlib.util.find_spec('sklearn') is not None
 
 
 def example_landmarks():
@@ -20,6 +24,27 @@ def example_landmarks():
     points[0] = [.5, .8, 0]
     points[9] = [.5, .5, -.01]
     return points
+
+
+CENTRES = np.random.default_rng(0).normal(0, 1, (len(LABELS), FEATURE_COUNT))
+
+
+def make_session(root, split, n=40, noise=.25, seed=1, labels=LABELS):
+    """A session on disk as gesture_collect.py writes it; features cluster per label and hand."""
+    rng = np.random.default_rng(seed)
+    session = f'{split}-{seed}'
+    directory = Path(root)/session
+    directory.mkdir(parents=True)
+    (directory/'session.json').write_text(json.dumps(
+        {'session': session, 'split': split, 'feature_version': FEATURE_VERSION, 'label_set': LABEL_SET}))
+    for label in labels:
+        for hand in HANDS:
+            rec = Recording(label, 0., n, hand)
+            centre = CENTRES[LABELS.index(label)] + (.3 if hand == 'L' else 0.)
+            rec.samples = [centre + rng.normal(0, noise, FEATURE_COUNT) for _ in range(n)]
+            rec.timestamps = list(range(n))
+            rec.save(directory, session, split)
+    return directory
 
 
 class FeatureTests(unittest.TestCase):
@@ -36,249 +61,186 @@ class FeatureTests(unittest.TestCase):
         self.assertIsNone(landmark_features(np.ones((20, 3)), 640, 480))
         self.assertIsNone(landmark_features(np.full((21, 3), np.nan), 640, 480))
 
-    def test_low_confidence_and_ambiguous_predictions_rejected(self):
+    def test_low_confidence_and_ambiguous_predictions_become_none(self):
         classes = np.array(LABELS)
-        p = np.full((3, 8), .01)
-        p[0, 0] = .6  # below threshold
-        p[1, 0], p[1, 1] = .51, .48  # small margin
-        p[2, 0] = .93
-        self.assertEqual(gated_labels(p, classes, .9, .2).tolist(), ['UNKNOWN', 'UNKNOWN', 'OPEN'])
+        p = np.zeros((3, len(LABELS)))
+        p[0, 1] = .85; p[0, 2] = .15                 # below threshold
+        p[1, 1] = .55; p[1, 2] = .45                 # too close to the second
+        p[2, 2] = .97; p[2, 1] = .03
+        self.assertEqual(gated_labels(p, classes, .9, .2).tolist(), ['NONE', 'NONE', 'FORWARD'])
 
 
 class CollectionTests(unittest.TestCase):
-    def hand(self, t):
-        return Hand(t, 'OPEN', features=tuple(np.zeros(FEATURE_COUNT)))
-
     def test_countdown_duplicate_stale_frames_and_sample_limit(self):
-        rec = Recording('OPEN', 10., target=2)
-        self.assertFalse(rec.add(self.hand(11.), 11.))
-        self.assertTrue(rec.add(self.hand(12.1), 12.1))
-        self.assertFalse(rec.add(self.hand(12.1), 12.15))
-        self.assertFalse(rec.add(self.hand(12.3), 12.7))
-        self.assertFalse(rec.add(None, 12.7))
-        self.assertTrue(rec.add(self.hand(12.8), 12.8))
-        self.assertFalse(rec.add(self.hand(13.1), 13.1))
-        self.assertEqual(len(rec.samples), 2)
+        rec = Recording('FORWARD', 0., target=2)
+        f = tuple(np.ones(FEATURE_COUNT))
+        self.assertFalse(rec.add(Hand(1., 'NONE', features=f), 1.))            # countdown
+        self.assertTrue(rec.add(Hand(2.1, 'NONE', features=f), 2.1))
+        self.assertFalse(rec.add(Hand(2.15, 'NONE', features=f), 2.15))        # faster than 5 Hz
+        self.assertFalse(rec.add(Hand(2.4, 'NONE', features=f), 2.9))          # stale
+        self.assertTrue(rec.add(Hand(2.5, 'NONE', features=f), 2.5))
+        self.assertFalse(rec.add(Hand(2.8, 'NONE', features=f), 2.8))          # full
 
-    def test_roundtrip_uses_human_label_not_rule_prediction(self):
+    def test_saved_take_carries_label_hand_session_and_split(self):
         with tempfile.TemporaryDirectory() as tmp:
-            rec = Recording('THREE', 0., hand='L')
-            rec.add(self.hand(2.1), 2.1)  # detector says OPEN, human label is THREE
-            path = rec.save(Path(tmp)/'session-a', 'session-a')
-            x, y, groups, hands, files = load_recordings(tmp)
-            self.assertEqual(x.shape, (1, FEATURE_COUNT))
-            self.assertEqual(y.tolist(), ['THREE'])
-            self.assertEqual(hands.tolist(), ['L'])
-            self.assertEqual(groups.tolist(), ['session-a'])
-            self.assertTrue(path.exists())
-            self.assertEqual(len(files), 1)
+            make_session(tmp, 'validation', n=MIN_SAMPLES)
+            d = load_recordings(tmp)
+            self.assertEqual(set(d['split']), {'validation'})
+            self.assertEqual(set(d['y']), set(LABELS))
+            self.assertEqual(set(d['hand']), set(HANDS))
 
-    def test_legacy_recording_without_hand_rejected(self):
+    def test_scan_readiness_and_next_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)/'old'
-            directory.mkdir()
-            np.savez_compressed(directory/'OPEN.npz', X=np.zeros((1, FEATURE_COUNT)), label=np.array('OPEN'),
-                                session=np.array('old'), feature_version=np.array(FEATURE_VERSION))
-            with self.assertRaisesRegex(ValueError, 'Legacy'):
+            make_session(tmp, 'train', n=MIN_SAMPLES)
+            make_session(tmp, 'test', n=MIN_SAMPLES, labels=LABELS[:3])
+            samples, sessions = scan(tmp)
+            ready = readiness(samples, sessions)
+            self.assertEqual(ready['train'], [])
+            self.assertEqual(ready['validation'], ['no session'] + [f'{l}/{h}' for l in LABELS for h in HANDS])
+            self.assertIn('BACK/L', ready['test'])
+            self.assertNotIn('NONE/L', ready['test'])
+        counts = {(l, h): 60 for l in LABELS for h in HANDS}
+        counts['LEFT', 'L'] = 10
+        from collections import Counter
+        self.assertEqual(next_missing(Counter(counts), 60), ('LEFT', 'L'))
+        counts['LEFT', 'L'] = 60
+        self.assertIsNone(next_missing(Counter(counts), 60))
+
+    def test_recording_from_other_split_or_label_set_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = make_session(tmp, 'train', n=MIN_SAMPLES)
+            meta = json.loads((directory/'session.json').read_text())
+            meta['split'] = 'test'
+            (directory/'session.json').write_text(json.dumps(meta))
+            with self.assertRaises(ValueError):
+                load_recordings(tmp)
+            meta['split'], meta['label_set'] = 'train', 'old-v1'
+            (directory/'session.json').write_text(json.dumps(meta))
+            with self.assertRaises(ValueError):
                 load_recordings(tmp)
 
-    def test_duplicate_file_rejected(self):
+    def test_duplicate_take_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            rec = Recording('OPEN', 0.)
-            rec.add(self.hand(2.1), 2.1)
-            path = rec.save(Path(tmp)/'session-a', 'session-a')
-            path.with_name('duplicate.npz').write_bytes(path.read_bytes())
-            with self.assertRaisesRegex(ValueError, 'Duplicate'):
+            directory = make_session(tmp, 'train', n=MIN_SAMPLES)
+            take = next(directory.glob('*.npz'))
+            (directory/('copy_' + take.name)).write_bytes(take.read_bytes())
+            with self.assertRaises(ValueError):
                 load_recordings(tmp)
 
-    def test_collector_ui_save_undo_and_resume_without_real_camera(self):
-        import cv2
-        import threading
-        import gesture_collect as app
-        clock = [100.]
+    @unittest.skipUnless(importlib.util.find_spec('cv2'), 'needs OpenCV')
+    def test_trainer_screen_renders_every_state(self):
+        from collections import Counter
+        points = tuple((.4 + .01*i, .4 + .01*i) for i in range(21))
+        hand = Hand(1., 'NONE', .5, .5, tuple(np.ones(FEATURE_COUNT)), side='L', points=points)
+        s = {'session': 'x', 'split': 'train', 'selected': 2, 'hand': 'R', 'recording': None,
+             'counts': Counter(), 'totals': Counter(), 'sessions': Counter(), 'target': 60, 'check': True,
+             'model': None, 'model_name': '', 'error': '', 'message': 'hello'}
+        for hands, rec, now in (((), None, 1.), ((hand,), Recording('FORWARD', 0., 60, 'R'), 1.),
+                                ((hand,), Recording('FORWARD', 0., 60, 'R'), 3.), ((hand, hand), None, 1.)):
+            s['recording'] = rec
+            img = render_collect(None, hands, s, now)
+            self.assertEqual(img.shape, (720, 1280, 3))
+
+    @unittest.skipUnless(importlib.util.find_spec('cv2'), 'needs OpenCV')
+    def test_collector_records_saves_and_undoes_without_real_camera(self):
+        import gesture_collect
+        f = tuple(np.ones(FEATURE_COUNT))
 
         class Worker:
             def __init__(self, *args):
-                self.end = threading.Event()
-                self.frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                self.end, self.ident = type('E', (), {'set': lambda s: None})(), None
+                self.t = 0.
+
             def start(self):
                 pass
-            def join(self, **kwargs):
-                pass
+
             def snapshot(self):
-                return self.frame, (Hand(clock[0], 'OPEN', features=tuple(np.zeros(FEATURE_COUNT))),), ''
+                import time
+                return None, (Hand(time.monotonic(), 'NONE', .5, .5, f, side='R'),), ''
 
-        def run(argv, keys):
-            sequence = iter(keys)
-            def keypress(_):
-                clock[0] += .21
-                return next(sequence)
-            with patch.object(app, 'CameraWorker', Worker), patch.object(app.time, 'monotonic', side_effect=lambda: clock[0]), \
-                    patch.object(cv2, 'imshow'), patch.object(cv2, 'getWindowProperty', return_value=1), \
-                    patch.object(cv2, 'waitKey', side_effect=keypress), patch.object(cv2, 'destroyAllWindows'), \
-                    patch('sys.argv', argv):
-                app.main()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch('hand_camera.CameraWorker', Worker), patch('cv2.namedWindow'), patch('cv2.imshow'), \
+             patch('cv2.destroyAllWindows'), patch('cv2.getWindowProperty', return_value=1), \
+             patch('gesture_collect.PREPARE_S', 0.), patch('gesture_collect.SAMPLE_GAP_S', 0.), \
+             patch('cv2.waitKey', side_effect=[ord('3'), ord('r')] + [255]*40 + [ord('u'), ord('r')]
+                   + [255]*40 + [27]):
+            self.assertEqual(gesture_collect.main(['--data', tmp, '--split', 'test', '--samples', '30']), 0)
+            sessions = list(Path(tmp).glob('*/session.json'))
+            self.assertEqual(len(sessions), 1)
+            self.assertEqual(json.loads(sessions[0].read_text())['split'], 'test')
+            takes = list(sessions[0].parent.glob('FORWARD_R_*.npz'))
+            self.assertEqual(len(takes), 1)
+            self.assertEqual(len(list(sessions[0].parent.glob('discarded/*.npz'))), 1)
 
+
+class TrainingTests(unittest.TestCase):
+    def test_metrics_count_dangerous_mistakes_not_harmless_ones(self):
+        y = ['FORWARD', 'FORWARD', 'NONE', 'STOP', 'GRIP_OPEN']
+        p = ['STOP', 'NONE', 'LEFT', 'NONE', 'GRIP_OPEN']
+        m = metrics(y, p)
+        self.assertEqual(m['dangerous_wrong'], 1)              # NONE read as LEFT
+        self.assertAlmostEqual(m['command_recall'], 1/4)
+
+    def test_missing_split_or_short_data_refuses_to_train(self):
         with tempfile.TemporaryDirectory() as tmp:
-            model = Path(tmp)/'placeholder.task'
-            model.write_bytes(b'not read by fake worker')
-            directory = Path(tmp)/'data'
-            argv = ['gesture_collect.py', '--data', str(directory), '--model', str(model), '--samples', '30']
-            run(argv, [ord('5'), ord('h'), ord('r')]+[-1]*50+[ord('u'), ord('r')]+[-1]*50+[27])
-            x, y, groups, hands, inventory = load_recordings(directory)
-            self.assertEqual(x.shape, (30, FEATURE_COUNT))
-            self.assertEqual(set(y), {'THREE'})
-            self.assertEqual(set(hands), {'L'})
-            self.assertEqual(len(inventory), 1)
-            session = str(groups[0])
-            self.assertEqual(len(list((directory/session/'discarded').glob('*.npz'))), 1)
-            run(argv+['--session', session], [27])
-            self.assertEqual(len(list(directory.iterdir())), 1)
+            make_session(tmp, 'train', n=MIN_SAMPLES)
+            make_session(tmp, 'validation', n=MIN_SAMPLES)
+            with self.assertRaisesRegex(ValueError, 'test: no session'):
+                check_data(load_recordings(tmp))
+            make_session(tmp, 'test', n=MIN_SAMPLES - 1)
+            with self.assertRaisesRegex(ValueError, 'test: fewer than'):
+                check_data(load_recordings(tmp))
 
+    def test_gate_prefers_safety_then_recall(self):
+        classes = np.array(LABELS)
+        y = np.array(['FORWARD', 'NONE'])
+        p = np.zeros((2, len(LABELS)))
+        p[0, 2] = .95; p[0, 0] = .05                  # confident and right
+        p[1, 4] = .75; p[1, 0] = .25                  # NONE read as LEFT at .75
+        threshold, margin, _ = choose_gate(p, classes, y)
+        self.assertEqual(gated_labels(p, classes, threshold, margin).tolist(), ['FORWARD', 'NONE'])
 
-class SplitTests(unittest.TestCase):
-    def data(self, sessions=5):
-        per_session = 30*len(LABELS)*len(HANDS)
-        y = np.tile(np.repeat(LABELS, 30*len(HANDS)), sessions)
-        hands = np.tile(list(HANDS), per_session*sessions//len(HANDS))
-        groups = np.repeat([f's{i}' for i in range(sessions)], per_session)
-        return y, groups, hands
-
-    def test_no_session_leakage_and_every_label_present(self):
-        y, groups, hands = self.data()
-        split = split_sessions(y, groups, hands)
-        names = list(split)
-        for name in names:
-            self.assertEqual(set(y[split[name]]), set(LABELS))
-            for other in names:
-                if name != other:
-                    self.assertTrue(set(groups[split[name]]).isdisjoint(groups[split[other]]))
-        self.assertEqual(sum(len(v) for v in split.values()), len(y))
-
-    def test_insufficient_or_incomplete_sessions_fail(self):
-        with self.assertRaisesRegex(ValueError, 'at least 5'):
-            split_sessions(*self.data(4))
-        y, groups, hands = self.data()
-        keep = ~((groups == 's0') & (y == 'UNKNOWN'))
-        with self.assertRaisesRegex(ValueError, 'Missing/short'):
-            split_sessions(y[keep], groups[keep], hands[keep])
-        keep = ~((groups == 's0') & (y == 'ONE') & (hands == 'L'))
-        with self.assertRaisesRegex(ValueError, 'ONE/L'):
-            split_sessions(y[keep], groups[keep], hands[keep])
-
-    def test_report_counts_false_commands_not_only_accuracy(self):
-        report = metrics(np.array(['UNKNOWN', 'OPEN', 'FIST']),
-                         np.array(['ONE', 'UNKNOWN', 'FIST']))
-        self.assertEqual(report['wrong_active_commands'], 1)
-        self.assertEqual(report['unknown_to_active_rate'], 1.)
-        self.assertEqual(report['correct_active_recall'], .5)  # FIST (stop) is a command now
-
-
-class TrainingIntegrationTests(unittest.TestCase):
-    def test_live_loop_accepts_fresh_status_after_poll(self):
-        import cv2
-        import threading
-        import gesture_control as app
-        clock = [100.]
-        packets = []
-
-        class Link:
-            def __init__(self, *args):
-                self.started, self.received = False, 0.
-                self.status, self.status_at = None, 0.
-            def poll(self):
-                clock[0] += .001
-                self.received = self.status_at = clock[0]
-                self.status = {'state': 'RUNNING' if self.started else 'IDLE', 'servo': [0]}
-            def running(self, now):
-                return self.started and 0 <= now-self.received < .6
-            def send(self, cmd, **fields):
-                packets.append((cmd, fields))
-                if cmd == 'start':
-                    self.started = True
-            def close(self):
-                pass
-
-        class Worker:
-            def __init__(self, *args):
-                self.end = threading.Event()
-                self.count = 0
-            def start(self):
-                pass
-            def join(self, **kwargs):
-                pass
-            def snapshot(self):
-                self.count += 1
-                return np.zeros((480, 640, 3), dtype=np.uint8), (Hand(
-                    clock[0], 'OPEN', x=.75, y=.5 if self.count < 12 else .2),), ''
-
-        keys = iter([ord('g')]+[-1]*18+[27])
-        def keypress(_):
-            clock[0] += .1
-            return next(keys)
+    @unittest.skipUnless(HAS_SKLEARN, 'needs scikit-learn (.venv-gesture)')
+    def test_train_validate_test_end_to_end(self):
         with tempfile.TemporaryDirectory() as tmp:
-            model = Path(tmp)/'placeholder.task'
-            model.write_bytes(b'fake worker does not load this')
-            with patch.object(app, 'CameraWorker', Worker), patch.object(app, 'RobotLink', Link), \
-                    patch.object(app.time, 'monotonic', side_effect=lambda: clock[0]), \
-                    patch.object(cv2, 'imshow'), patch.object(cv2, 'getWindowProperty', return_value=1), \
-                    patch.object(cv2, 'waitKey', side_effect=keypress), patch.object(cv2, 'destroyAllWindows'), \
-                    patch('sys.argv', ['gesture_control.py', '--model', str(model), '--rules',
-                                        '--live', '--robot', '127.0.0.1']):
-                app.main()
-        self.assertTrue(any(cmd == 'drive' and fields.get('l', 0) > 0 for cmd, fields in packets))
-        self.assertEqual(packets[-1][0], 'stop')
+            data, models = Path(tmp)/'data', Path(tmp)/'models'
+            for i, split in enumerate(('train', 'train', 'validation', 'test')):
+                make_session(data, split, seed=10 + i)
+            out = models/'gesture_commands_20260101-000000.npz'
+            report, path = train(data, out, iterations=300)
+            self.assertEqual(path, out)
+            self.assertEqual(newest_model(models), out)
+            self.assertEqual(report['gate_chosen_on'], 'validation')
+            self.assertEqual(sorted(report['data']['train']['sessions']), ['train-10', 'train-11'])
+            for split in SPLITS:
+                self.assertGreater(report['splits'][split]['with_gate']['accuracy'], .95, split)
+            model = GestureModel(out)
+            self.assertEqual(model.threshold, report['threshold'])
+            label, score, top = model.predict(CENTRES[LABELS.index('LEFT')])
+            self.assertEqual(label, 'LEFT')
+            with self.assertRaises(ValueError):
+                train(data, out)                                   # never overwrite
+            text = gesture_train.format_split('test', report['splits']['test'])
+            self.assertIn('DANGEROUS', text)
+            self.assertIn('confusion', text)
 
-    def test_train_export_reload_report_and_control_use(self):
-        # Synthetic separable features test plumbing ONLY, not real hand accuracy.
-        rng = np.random.default_rng(5)
+    @unittest.skipUnless(HAS_SKLEARN, 'needs scikit-learn (.venv-gesture)')
+    def test_model_with_old_labels_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for s in range(5):
-                directory = root/'data'/f's{s}'
-                directory.mkdir(parents=True)
-                for i, label in enumerate(LABELS):
-                    for hand in HANDS:
-                        x = rng.normal(0, .04, (30, FEATURE_COUNT))
-                        x[:, i] += 2.
-                        np.savez_compressed(directory/f'{label}_{hand}.npz', X=x, label=np.array(label),
-                                            hand=np.array(hand), session=np.array(f's{s}'),
-                                            feature_version=np.array(FEATURE_VERSION))
-            output = root/'model.npz'
-            report = train(root/'data', output, iterations=120)
-            model = GestureModel(output)
-            self.assertTrue(output.with_suffix('.report.json').exists())
-            self.assertFalse(report['hardware_validated'])
-            self.assertEqual(len(report['splits']['train']['sessions']), 3)
-            self.assertEqual(set(report['splits']['test']['with_rejection_per_hand']), set(HANDS))
-            feature = np.zeros(FEATURE_COUNT)
-            feature[0] = 2.
-            label, score, candidate = model.predict(feature)
-            self.assertEqual(label, 'OPEN')
-            self.assertEqual(candidate, 'OPEN')
-            control = GestureControl(gears=(.25,))
-            control.start()
-            for i in range(10):
-                t = 10+i*.1
-                control.update([Hand(t, label, x=.75, score=score)], t)
-            self.assertTrue(control.ready)
-            t += .1
-            self.assertEqual(control.update([Hand(t, label, x=.75, y=.2)], t)[:2], (.25, .25))
-            t += .1
-            rejected = gated_labels(np.ones((1, 8))/8, model.classes, model.threshold, model.margin)[0]
-            self.assertEqual(control.update([Hand(t, rejected, x=.75, y=.2)], t)[:2], (0., 0.))
-            self.assertFalse(control.ready)
-            with self.assertRaisesRegex(ValueError, 'already exists'):
-                train(root/'data', output)
-            # Corrupt metadata must not load as a model or fall back to rules.
-            with np.load(output, allow_pickle=False) as data:
-                arrays = {name: data[name] for name in data.files}
+            data = Path(tmp)/'data'
+            for i, split in enumerate(SPLITS):
+                make_session(data, split, n=MIN_SAMPLES, seed=20 + i)
+            out = Path(tmp)/'m.npz'
+            train(data, out, iterations=50)
+            with np.load(out) as z:
+                arrays = dict(z)
             meta = json.loads(str(arrays['metadata'].item()))
-            meta['feature_version'] = 'other'
+            meta['label_set'] = 'two-hand-v1'
             arrays['metadata'] = np.array(json.dumps(meta))
-            np.savez(root/'bad.npz', **arrays)
-            with self.assertRaisesRegex(ValueError, 'feature version'):
-                GestureModel(root/'bad.npz')
+            old = Path(tmp)/'old.npz'
+            np.savez(old, **arrays)
+            with self.assertRaisesRegex(ValueError, 'other labels'):
+                GestureModel(old)
 
 
 if __name__ == '__main__':
