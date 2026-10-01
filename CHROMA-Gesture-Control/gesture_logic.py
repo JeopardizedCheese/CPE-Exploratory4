@@ -40,10 +40,10 @@ def canned_pose(category, score, min_score):
     return CANNED.get(category, 'UNKNOWN') if score >= min_score else 'UNKNOWN'
 
 
-def duty(command):
-    """Approximate firmware PWM duty for a normalized wheel command."""
+def duty(command, floor=FIRMWARE_MIN_DUTY):
+    """Approximate firmware PWM duty for a normalized wheel command and floor duty."""
     mag = min(abs(command), 1.)
-    return 0. if mag < .01 else FIRMWARE_MIN_DUTY + mag*(FIRMWARE_MAX_DUTY-FIRMWARE_MIN_DUTY)
+    return 0. if mag < .01 else floor + mag*(FIRMWARE_MAX_DUTY-floor)
 
 
 @dataclass(frozen=True)

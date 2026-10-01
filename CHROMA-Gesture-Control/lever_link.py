@@ -1,10 +1,16 @@
 """Transport gate for the lever. Preview has no socket; live requires own status."""
+import math
 import time
 
 
 class LeverSession:
-    def __init__(self, control, link=None):
+    def __init__(self, control, link=None, min_duty=None):
+        if min_duty is not None and not (math.isfinite(min_duty) and 0 <= min_duty <= 1):
+            raise ValueError('min_duty must be in [0, 1]')
         self.control, self.link = control, link
+        # Floor duty sent as "m" with every drive packet (firmware robot_ctrl). A drive
+        # packet without "m" resets the firmware to its own MIN_DUTY, so none may omit it.
+        self.floor = {} if min_duty is None else {'m': round(float(min_duty), 3)}
         self.pending_start = None
         self.last_start = self.last_send = float('-inf')
         self.last_wheels = (0., 0.)
@@ -31,7 +37,7 @@ class LeverSession:
         self.last_wheels = (0., 0.)
         self.message = 'Stopped / paused; grip position is kept'
         if self.link:
-            self.link.send('drive', l=0., r=0.)
+            self.link.send('drive', l=0., r=0., **self.floor)
             self.link.send('stop')
 
     def _running(self, now):
@@ -57,6 +63,11 @@ class LeverSession:
             if self.control.enabled and not self._running(now):
                 self.stop()
                 self.message = 'Robot status lost or session changed. Press G to restart'
+            if (self.floor and self.control.enabled and self.link.status
+                    and 'min_duty' not in self.link.status):
+                # old firmware ignores "m" and would silently drive at its own MIN_DUTY
+                self.stop()
+                self.message = 'Firmware does not report min_duty: flash robot_ctrl or run without --min-duty'
 
         left, right, events = self.control.update(hands, now)
         if not self.control.enabled or self.control.mode != 'SERVO':
@@ -70,14 +81,14 @@ class LeverSession:
             # A transition to zero bypasses the ordinary 20 Hz send schedule.
             stopped = (left, right) == (0., 0.) and self.last_wheels != (0., 0.)
             if stopped or now-self.last_send >= .05:
-                self.link.send('drive', l=left, r=right)
+                self.link.send('drive', l=left, r=right, **self.floor)
                 if not self.control.enabled and self.pending_start is None:
                     self.link.send('stop')
                 self.last_send = now
             if self.grip_retry and now >= self.grip_retry[2]:
                 # OPEN/CLOSE are idempotent targets. Three copies tolerate loss;
                 # there is no physical grip sensor or per-command ACK here.
-                self.link.send('drive', l=0., r=0.)
+                self.link.send('drive', l=0., r=0., **self.floor)
                 self.link.send('grip', p=self.grip_retry[0])
                 self.grip_retry[1] -= 1
                 self.grip_retry[2] = now + .1

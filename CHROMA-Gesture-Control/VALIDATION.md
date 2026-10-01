@@ -21,3 +21,14 @@ Re-run the tests from the package directory:
 ```
 
 The new entry point is `lever_control.py`; it reuses the existing camera worker, protocol, and MediaPipe model. Existing firmware and the `gesture_control.py` two-hand entry point are unchanged.
+
+## 2026-10-01 addition: speed keys and drive floor
+
+Validated on Linux (Fedora), Python in `.venv-gesture`: 75 automated tests pass (the 68 above plus 7 new).
+
+- `+` / `-` change the command level by 0.05 within 0.02–1.00, apply to the next drive command and do not disarm.
+- `--min-duty X` sends `m` with every drive packet, including zero and pre-grip packets (a packet without `m` resets the firmware floor to `MIN_DUTY`). Without the flag no packet carries `m`, as before. Values outside 0–1 are rejected before a socket opens.
+- With `--min-duty`, a robot status without `min_duty` (old firmware that ignores `m`) stops control instead of driving at the firmware floor.
+- The status panel shows the PWM at the current level and the floor in use, and the firmware-reported floor; the rendered panel was inspected for clipping.
+
+Not validated: the same hardware items as above (no robot, motors or webcam used).

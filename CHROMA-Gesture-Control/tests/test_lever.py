@@ -169,6 +169,19 @@ class LeverTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 LeverControl(speed)
 
+    def test_speed_keys_step_clamp_and_apply_at_once(self):
+        self.drive()
+        self.assertEqual(self.control.adjust_speed(+1), .25)
+        self.assertEqual(self.frame(y=.25)[:2], (.25, .25))
+        self.assertEqual(self.control.adjust_speed(-1), .2)
+        for _ in range(30):
+            self.control.adjust_speed(+1)
+        self.assertEqual(self.control.speed, 1.)
+        for _ in range(30):
+            self.control.adjust_speed(-1)
+        self.assertEqual(self.control.speed, .02)        # lowest valid speed, as --speed
+        self.assertEqual(self.control.mode, 'DRIVE')     # changing speed never disarms
+
 
 class FakeLink:
     def __init__(self):
@@ -199,7 +212,8 @@ class SessionTests(unittest.TestCase):
         self.t = 10.
 
     def status(self, session=None, state='RUNNING'):
-        self.link.status = {'state': state, 'session': session or self.link.session}
+        self.link.status = {'state': state, 'session': session or self.link.session,
+                            **getattr(self.link, 'status_extra', {})}
         self.link.status_at = self.t
 
     def frame(self, pose='FIST', y=.5, dt=.05, status=True):
@@ -302,6 +316,40 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(self.link.closed)
         self.assertFalse(self.control.enabled)
         self.assertEqual(self.link.packets[-1], ('stop', {}))
+
+
+    def floor_session(self, report=True):
+        self.session = LeverSession(self.control, self.link, min_duty=.65)
+        self.report = report
+
+    def test_min_duty_sent_with_every_drive_packet(self):
+        self.floor_session()
+        self.link.status_extra = {'min_duty': .65}
+        self.drive()
+        self.frame(y=.25)
+        self.frame(y=.5)
+        drives = [f for c, f in self.link.packets if c == 'drive']
+        self.assertTrue(drives)
+        self.assertTrue(all(f.get('m') == .65 for f in drives))
+        self.assertIn(('drive', {'l': .2, 'r': .2, 'm': .65}), self.link.packets)
+
+    def test_default_sends_no_floor(self):
+        self.drive()
+        self.frame(y=.25)
+        self.assertFalse(any('m' in f for c, f in self.link.packets if c == 'drive'))
+
+    def test_min_duty_with_firmware_that_does_not_report_it_stops(self):
+        self.floor_session()
+        self.session.start(self.t)
+        self.hold()
+        self.assertFalse(self.control.enabled)
+        self.assertIn('min_duty', self.session.message)
+        self.assertFalse(any(c == 'drive' and (f['l'] or f['r']) for c, f in self.link.packets))
+
+    def test_invalid_min_duty_rejected(self):
+        for floor in (-.1, 1.1, math.nan):
+            with self.assertRaises(ValueError):
+                LeverSession(self.control, self.link, min_duty=floor)
 
 
 if __name__ == '__main__':

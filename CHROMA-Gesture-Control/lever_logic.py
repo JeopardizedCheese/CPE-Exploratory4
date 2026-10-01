@@ -12,10 +12,11 @@ class LeverControl:
     ARM_SECONDS = .5
     CENTER_SECONDS = .3
     ACTION_SECONDS = .15
+    MIN_SPEED, SPEED_STEP = .02, .05
 
     def __init__(self, speed=.15, timeout=.2):
         # Turning uses 0.6 * speed; keep it above firmware's 0.01 cutoff.
-        if not math.isfinite(speed) or not .02 <= speed <= 1:
+        if not math.isfinite(speed) or not self.MIN_SPEED <= speed <= 1:
             raise ValueError('speed must be in [0.02, 1]')
         if not 0 < timeout <= .3:
             raise ValueError('timeout must be in (0, 0.3]')
@@ -24,6 +25,11 @@ class LeverControl:
         self._track = _Track(timeout)
         self.enabled = False
         self.reset('Press G to enable preview/control')
+
+    def adjust_speed(self, steps):
+        """+/- keys: change the command level by SPEED_STEP, at once and in any mode."""
+        self.speed = round(min(1., max(self.MIN_SPEED, self.speed + steps*self.SPEED_STEP)), 2)
+        return self.speed
 
     def reset(self, message):
         self.mode = 'STOP'

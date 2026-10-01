@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 
 from gesture_control import CameraWorker
-from gesture_logic import Hand, RobotLink, duty
+from gesture_logic import FIRMWARE_MIN_DUTY, Hand, RobotLink, duty
 from lever_logic import LeverControl
 from lever_link import LeverSession
 
@@ -57,8 +57,10 @@ def render_view(frame, hands, control, session, wheels, now, *, live=False,
     text(control.mode, 668, 165, .85, orange if servo else white)
     text('Enabled' if control.enabled else 'Paused - press G', 668, 197, .55, muted)
     text(f'L {wheels[0]:+.2f}     R {wheels[1]:+.2f}', 668, 240, .64)
-    text(f'Command level: {control.speed:.2f}', 668, 275, .48)
-    text(f'Legacy PWM at this level: {duty(control.speed)*100:.1f}%', 668, 301, .43, orange)
+    floor = session.floor.get('m', FIRMWARE_MIN_DUTY)
+    text(f'Command level: {control.speed:.2f}   (+/- keys)', 668, 275, .48)
+    text(f'PWM at this level: {duty(control.speed, floor)*100:.1f}%  (floor {floor:.2f}'
+         + ('' if session.floor else ' fw') + ')', 668, 301, .43, orange)
     text('Command level is NOT measured speed.', 668, 326, .40, muted)
     age = max((now-h.captured_at for h in hands), default=None)
     text(f'Frame age: {age*1000:.0f} ms' if age is not None else 'Hand: not detected', 668, 365, .5)
@@ -67,14 +69,16 @@ def render_view(frame, hands, control, session, wheels, now, *, live=False,
     status = session.link.status if session.link else None
     state = status.get('state', '?') if status else '-'
     servo_angle = (status.get('servo') or ['?'])[0] if status else '-'
-    text(f'Robot: {state}', 668, 421, .48)
+    fw_floor = status.get('min_duty') if status else None
+    text(f'Robot: {state}' + (f'   floor {fw_floor:.2f}' if isinstance(fw_floor, (int, float)) else ''),
+         668, 421, .48)
     text(f'Servo software angle: {servo_angle}', 668, 445, .44, muted)
     text('(not grip confirmation)', 668, 467, .4, muted)
 
     cv2.line(view, (20, 494), (980, 494), muted, 1)
     text(control.message, 24, 525, .57, cyan)
     text(error or session.message, 24, 555, .48, orange if error else muted)
-    text('G start  |  SPACE / X stop  |  ESC quit  |  Open palm cancels motion', 24, 599, .53)
+    text('G start  |  SPACE / X stop  |  +/- speed  |  ESC quit  |  Open palm cancels motion', 24, 599, .5)
     text('FIST: move whole hand to drive. Center = stop. THUMB UP: hold to enter servo.', 24, 628, .49)
     text('SERVO: keep thumb up; move hand UP to CLOSE, DOWN to OPEN; center to rearm.', 24, 655, .49)
     if demo:
@@ -94,6 +98,8 @@ def main(argv=None):
     parser.add_argument('--port', type=int, default=4211)
     parser.add_argument('--speed', type=float, default=.15,
                         help='Normalized command, NOT PWM or measured speed (default .15)')
+    parser.add_argument('--min-duty', type=float,
+                        help='Drive floor sent with every drive packet (e.g. .65); default = firmware MIN_DUTY')
     parser.add_argument('--min-score', type=float, default=.7)
     parser.add_argument('--demo', action='store_true', help='Mouse/key simulation without camera or network')
     args = parser.parse_args(argv)
@@ -105,6 +111,7 @@ def main(argv=None):
         parser.error('Invalid port or min-score')
     try:
         control = LeverControl(args.speed)
+        LeverSession(control, None, args.min_duty)       # validate before opening a socket
     except ValueError as exc:
         parser.error(str(exc))
     recognizer = ROOT/'models/gesture_recognizer.task'
@@ -115,7 +122,7 @@ def main(argv=None):
     except ImportError:
         parser.error('OpenCV is missing. Run setup_lever.ps1 first.')
     link = RobotLink(args.robot, args.port) if args.live else None
-    session = LeverSession(control, link)
+    session = LeverSession(control, link, args.min_duty)
     worker = None if args.demo else CameraWorker(args.camera, ROOT/'models/hand_landmarker.task',
                                                recognizer=recognizer, min_score=args.min_score)
     demo_hand = {'x': .5, 'y': .5, 'pose': 'FIST', 'count': 1}
@@ -153,6 +160,10 @@ def main(argv=None):
                 session.stop()
             elif key in (ord('g'), ord('G')):
                 session.start()
+            elif key in (ord('+'), ord('=')):
+                print(f'speed {control.adjust_speed(+1):.2f}')
+            elif key == ord('-'):
+                print(f'speed {control.adjust_speed(-1):.2f}')
             elif args.demo and key in (ord('0'), ord('1'), ord('2'), ord('3'), ord('4')):
                 if key in (ord('0'), ord('4')):
                     demo_hand['count'] = 0 if key == ord('0') else 2
