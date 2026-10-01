@@ -1,5 +1,21 @@
 # CHANGELOG: CHROMA gemstone-sorting robot (CPE102)
 
+## 2026-10-02: match-day config, first gesture model, V1/V2/V3 on `main`
+
+**EN**
+- `calib.json` (competition config) now holds the current arm: grip offset [190, 0], footprint front 220, `footprint_margin_mm` 30, `approach_max_side_mm` 18, `grip_close` 250 (360 servo), plus the latest field corners, zones and HSV from the practice field. **The team still recalibrates on the match field** (`calibrate_arena.py` → `find_zones.py` → `sample_hsv.py`).
+- `minifield/calib_minifield.json`: `grip_close` 250, camera height 2100 mm, camera floor point [825, 320].
+- First trained gesture model `CHROMA-Gesture-Control/models/gesture_commands_20261001-210247.npz` and its data (`gesture_data/`, 5 sessions: 3 train, 1 validation, 1 test). Test split: 960 samples, accuracy 1.0, 0 dangerous mistakes (one operator, one room; not tried on the robot).
+- Branch `v1-v2-split` merged into `main`: V1 `autonomy.py`, V2 `autonomy2.py`, V3 `autonomy3.py`, gesture rebuild, camera floor point, `carry_wall_clamp`.
+- Tests: 239 pass; gesture 52 pass.
+
+**TH**
+- `calib.json` (config สนามแข่ง) ใช้แขนปัจจุบัน: grip offset [190, 0], footprint front 220, `footprint_margin_mm` 30, `approach_max_side_mm` 18, `grip_close` 250 (เซอร์โว 360) พร้อมมุมสนาม โซน และ HSV ล่าสุดจากสนามซ้อม **ทีมยังต้องคาลิเบรตใหม่บนสนามแข่ง** (`calibrate_arena.py` → `find_zones.py` → `sample_hsv.py`)
+- `minifield/calib_minifield.json`: `grip_close` 250 ความสูงกล้อง 2100 มม. จุดใต้กล้อง [825, 320]
+- โมเดลท่ามือตัวแรก `CHROMA-Gesture-Control/models/gesture_commands_20261001-210247.npz` และข้อมูล (`gesture_data/` 5 session: train 3, validation 1, test 1) ชุด test: 960 ตัวอย่าง ความแม่นยำ 1.0 ไม่มีคำสั่งอันตรายผิดเลย (คนเดียว ห้องเดียว ยังไม่ได้ลองกับหุ่น)
+- รวม branch `v1-v2-split` เข้า `main`: V1 `autonomy.py`, V2 `autonomy2.py`, V3 `autonomy3.py`, ระบบท่ามือใหม่, จุดใต้กล้อง, `carry_wall_clamp`
+- เทสต์: ผ่าน 239; gesture ผ่าน 52
+
 ## 2026-10-02: V2 carry detour kept off the walls (`carry_wall_clamp`)
 
 **EN**
