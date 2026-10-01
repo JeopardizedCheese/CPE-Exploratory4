@@ -164,7 +164,7 @@ class ProfileTests(unittest.TestCase):
 
     def test_unknown_profile_rejected(self):
         with self.assertRaises(ValueError):
-            profiles.apply_profile({}, 'v3')
+            profiles.apply_profile({}, 'v4')
 
     def test_autonomy2_runs_the_v2_profile(self):
         with tempfile.TemporaryDirectory() as d:

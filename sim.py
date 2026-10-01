@@ -40,6 +40,11 @@ DEFAULT_PARAMS = {
     'grip_reach_mm': 25.0,       # stone centre must be within this of the grip point (forward)
     'grip_side_mm': 18.0,        #   ... and this sideways
     'grip_success': 1.0,         # probability a well-placed grab holds
+    'gripcam': True,             # gripper camera present: status "gripcam" ok, answers "look"
+    'gripcam_error': 0.0,        # probability that one look reading is a random trained ID
+    'gripcam_look_s': 0.32,      # firmware: 150 ms settle + 5 readings from distinct frames
+    'gripcam_ahead_mm': 30.0,    # a stone this far ahead of the closed jaws (pushed along) is
+                                 # trained as Single, like a held one
     'pose_noise_mm': 0.0, 'heading_noise_deg': 0.0,
     'tag_dropout': 0.0,          # fraction of frames without a pose
     'latency_s': 0.0,            # how old perception is when the planner gets it
@@ -110,6 +115,9 @@ class SimRobot:
         self.servo = [float(v) for v in self.p['servo_start']]
         self.target = list(self.servo)
         self.held = None
+        from autonomy import DEFAULTS     # the IDs the planner maps back to verdicts
+        self.grip_ids = cfg.get('autonomy', {}).get('grip_check_ids') or DEFAULTS['grip_check_ids']
+        self.look = None             # {'n', 't', 'done', 'ids'}
         self.t = 0.0
         self.history = []            # (t, x, y, h) for latency
         self.spinning = False        # turning in place has broken free of static friction
@@ -131,6 +139,8 @@ class SimRobot:
             self.state, self.why, self.run_start = 'RUNNING', 'start', now
         elif c == 'stop':
             self._enter('IDLE', 'remote stop')
+        elif c == 'look' and self.p['gripcam'] and isinstance(f.get('n'), int):
+            self.look = {'n': f['n'], 't': now, 'done': False, 'ids': []}
         elif c in ('grip', 'servo') and self.state in ('IDLE', 'RUNNING'):
             p = self.p
             if c == 'grip':
@@ -141,14 +151,38 @@ class SimRobot:
             if deg is not None and 0 <= i < len(self.servo):
                 self.target[i] = float(max(0, min(180, deg)))
 
+    def _stone_ahead(self):
+        """A floor stone just in front of the closed jaws: they push it along."""
+        gx, gy = self.grip_point()
+        f = (math.cos(self.h), math.sin(self.h))
+        for s in self.stones:
+            if s.state == 'floor':
+                dx, dy = s.x - gx, s.y - gy
+                along, side = dx * f[0] + dy * f[1], -dx * f[1] + dy * f[0]
+                if 0 <= along <= self.p['grip_reach_mm'] + self.p['gripcam_ahead_mm'] and abs(side) <= self.p['grip_side_mm']:
+                    return True
+        return False
+
     def _enter(self, state, why):
         self.state, self.why = state, why
         if state != 'RUNNING':
             self.cmd, self.out = [0.0, 0.0], [0.0, 0.0]
 
     def status(self, now):
-        return {'state': self.state, 'why': self.why, 'l': self.out[0],
-                'r': self.out[1], 'min_duty': self.floor, 'servo': [round(v) for v in self.servo]}
+        st = {'state': self.state, 'why': self.why, 'l': self.out[0], 'r': self.out[1],
+              'min_duty': self.floor, 'servo': [round(v) for v in self.servo],
+              'gripcam': 'ok' if self.p['gripcam'] else 'none'}
+        lk = self.look
+        if lk is not None:
+            if not lk['done'] and now - lk['t'] >= self.p['gripcam_look_s']:
+                truth = 'single' if self.held is not None or self._stone_ahead() else 'empty'
+                trained = [i for v in self.grip_ids.values() for i in v]
+                err = self.p['gripcam_error']    # no random draws when 0: V2/V3 runs stay comparable
+                lk['ids'] = [self.rng.choice(trained) if err and self.rng.random() < err
+                             else self.grip_ids[truth][0] for _ in range(5)]
+                lk['done'] = True
+            st['look'] = {'n': lk['n'], 'done': lk['done'], 'ids': list(lk['ids'])}
+        return st
 
     # ------------------------------------------------------------ physics
     def _draw_breakaway(self):

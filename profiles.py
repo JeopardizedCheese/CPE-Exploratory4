@@ -1,9 +1,10 @@
-"""Two versions of the robot's behaviour that share one calib.json.
+"""Three versions of the robot's behaviour that share one calib.json.
 
     python autonomy.py  ...     V1: the behaviour we field-tested (pile = one "?" blob)
     python autonomy2.py ...     V2: V1 + the pile fix + outermost pile stone + target commitment
+    python autonomy3.py ...     V3: V2 + the grip check by the gripper camera (HuskyLens)
 
-Both read the same calib.json and accept the same flags. A profile only sets the switches
+All read the same calib.json and accept the same flags. A profile only sets the switches
 below, in memory, before --set is applied (so --set still wins); calib.json is never written.
 The run folder's config.json records the profile and every switch.
 
@@ -29,22 +30,35 @@ V2 switches (each can be turned back individually with --set, e.g. --set vision.
                                      it is the only stone on offer, retry it after this many seconds
                                      instead of parking.
 vision.pile_outermost and vision.pile_regions need pile_edge_pixels "nearest" (ignored with "legacy").
+
+V3 = V2 + one switch (turn it off with --set grip_check=false; V1 + grip check = autonomy.py
+--set grip_check=true):
+  autonomy.grip_check     true       once the jaws have closed, the gripper camera classifies them:
+                                     Empty -> open, back off, skip the spot; Single/Multiple -> carry
+                                     (no overhead pick check); Unsure -> as V2. V3 refuses to start
+                                     unless the firmware reports "gripcam":"ok". The trained IDs per
+                                     verdict are autonomy.grip_check_ids (calib.json or --set).
 """
 
 PROFILES = {
     'v1': {
         'vision': {'pile_edge_pixels': 'legacy', 'pile_outermost': False, 'pile_regions': False},
-        'autonomy': {'commit_target': False, 'skip_alone_s': None},
+        'autonomy': {'commit_target': False, 'skip_alone_s': None, 'grip_check': False},
     },
     'v2': {
         'vision': {'pile_edge_pixels': 'nearest', 'pile_outermost': True, 'pile_regions': True},
-        'autonomy': {'commit_target': True, 'skip_alone_s': 6},
+        'autonomy': {'commit_target': True, 'skip_alone_s': 6, 'grip_check': False},
+    },
+    'v3': {
+        'vision': {'pile_edge_pixels': 'nearest', 'pile_outermost': True, 'pile_regions': True},
+        'autonomy': {'commit_target': True, 'skip_alone_s': 6, 'grip_check': True},
     },
 }
 
 TITLES = {
     'v1': 'V1 (legacy: field-tested behaviour)',
     'v2': 'V2 (pile fix + outermost pile stone + target commitment)',
+    'v3': 'V3 (V2 + grip check by the gripper camera)',
 }
 
 

@@ -7,9 +7,10 @@
     python autonomy.py 10.178.188.50 --camera 1 --record   # also save video.avi for replay
     python autonomy.py 10.178.188.50 --camera 1 --record --set min_duty=0.5   # lower drive floor
     python autonomy2.py 10.178.188.50 --camera 1 --record   # V2: pile fix + outermost + commit
+    python autonomy3.py 10.178.188.50 --camera 1 --record   # V3: V2 + grip check (gripper camera)
 
-This file runs V1, the field-tested behaviour; autonomy2.py runs V2 with the same calib.json
-and the same flags. The differences are switches, listed in profiles.py.
+This file runs V1, the field-tested behaviour; autonomy2.py runs V2 and autonomy3.py V3 with
+the same calib.json and the same flags. The differences are switches, listed in profiles.py.
 
 The planner is deliberately simple:
 
@@ -22,6 +23,7 @@ The planner is deliberately simple:
   ALIGN      turn in place to the approach heading
   APPROACH   creep in until the grip point reaches the stone (the robot now hides it)
   GRIP       close; waits until the ESP32 reports the grip servo arrived
+             (V3: then the grip check: the gripper camera says Empty, Single, Multiple or Unsure)
   CARRY      slide the stone along the floor to the centre of its zone (colour fixed at lock)
   RELEASE/BACKOFF  open, reverse, repeat
 
@@ -103,7 +105,18 @@ DEFAULTS = {
     # when it is the only stone on offer (instead of parking for the whole skip_s). None = off.
     'commit_target': False,
     'skip_alone_s': None,
+    # V3 switch: grip check. Once the jaws have closed, the gripper camera (HuskyLens on the
+    # ESP32, "look" command) classifies them 5 times. Empty (empty_votes agree) -> open, back
+    # off, skip that spot; Single/Multiple (votes agree) -> carry without the overhead pick
+    # check; anything else, or no answer in grip_check_timeout_s -> Unsure = as without it.
+    # grip_check_ids: the HuskyLens IDs trained for each verdict (learn order).
+    'grip_check': False,
+    'grip_check_ids': {'empty': [1, 2], 'single': [3, 4], 'multiple': [5, 6]},
+    'grip_check_empty_votes': 5, 'grip_check_votes': 4,
+    'grip_check_timeout_s': 1.5,
 }
+
+GRIP_VERDICTS = ('empty', 'single', 'multiple')
 
 
 # Median rotation (deg) of a turn pulse from rest, by pulse length (s), measured on the
@@ -124,6 +137,19 @@ def pulse_seconds(degrees):
         if degrees <= d1:
             return t0 + (t1 - t0) * max(0.0, degrees - d0) / (d1 - d0)
     return PULSE_TABLE[-1][0]
+
+
+def grip_verdict(ids, id_map, empty_votes=5, votes=4):
+    """Grip check verdict from the gripper camera's class IDs (one per camera frame).
+    Empty needs more agreeing readings than the others: a held stone read as Empty would be
+    dropped, an empty grip read as held costs only what it did before the grip check."""
+    counts = {v: sum(i in id_map.get(v, ()) for i in ids) for v in GRIP_VERDICTS}
+    if counts['empty'] >= empty_votes:
+        return 'empty'
+    for v in ('single', 'multiple'):
+        if counts[v] >= votes:
+            return v
+    return 'unsure'
 
 
 def wrap(a):
@@ -171,6 +197,8 @@ class Planner:
         self._pulse_done_t = -1e9           # when the last pulse's wait ended (pose time)
         self._spin_dir = 0.0
         self._was_spinning = False          # _drive_to: inside a turn toward the goal
+        self._look = None                   # grip check in progress: {'n', 'sent'}
+        self._look_n = 0
         self.debug = {}
 
     # ------------------------------------------------------------ helpers
@@ -226,8 +254,36 @@ class Planner:
     def _start_grip(self, t, now, ev, why=''):
         self.pick_pos, self.pick_checked, self.uncovered_at = (t['x'], t['y']), False, None
         self.carrying = t['color']
+        self._look = None
         ev.append(('grip', {'p': 'close'}))
         self._go('GRIP', now, why)
+
+    def _grip_check(self, now, status, ev):
+        """Ask the gripper camera once, then wait for its answer. Returns 'wait' or a verdict."""
+        o = self.o
+        if self._look is None:
+            if not status:
+                return 'unsure'                 # no firmware link (simulation without status)
+            self._look_n += 1
+            self._look = {'n': self._look_n, 'sent': now}
+            ev.append(('look', {'n': self._look_n}))
+            return 'wait'
+        look = status.get('look') if status else None
+        waited = now - self._look['sent']
+        mine = isinstance(look, dict) and look.get('n') == self._look['n']
+        if not mine and waited > 0.4 and not self._look.get('resent'):
+            self._look['resent'] = True         # UDP: the look packet may be lost; same n again
+            ev.append(('look', {'n': self._look['n']}))
+        if mine and look.get('done'):
+            ids = [i for i in look.get('ids') or [] if isinstance(i, int)]
+            verdict = grip_verdict(ids, o['grip_check_ids'], o['grip_check_empty_votes'], o['grip_check_votes'])
+        elif waited > o['grip_check_timeout_s']:
+            ids, verdict = None, 'unsure'
+        else:
+            return 'wait'
+        self._look = None
+        self.debug.update(grip_check_ids=ids, grip_verdict=verdict, grip_check_s=round(waited, 3))
+        return verdict
 
     def _approach_heading(self, t, pose):
         if t.get('approach_deg') is not None:
@@ -695,8 +751,23 @@ class Planner:
             return v + steer, v - steer, ev
 
         if s == 'GRIP':
-            if self._servo_done(now, status, 'grip', o['grip_close']):
-                self._go('CARRY', now, f'to zone {self.carrying}')
+            if not self._servo_done(now, status, 'grip', o['grip_close']):
+                return 0.0, 0.0, ev
+            verdict = self._grip_check(now, status, ev) if o['grip_check'] else None
+            if verdict == 'wait':
+                self.debug['reason'] = 'waiting_grip_check'
+                return 0.0, 0.0, ev
+            if verdict == 'empty':
+                # nothing in the jaws: the stone was pushed aside (retried from its new spot)
+                # or is still here (skipped for skip_s, like any failed attempt)
+                self._skip_target(now, 'grip check: empty')
+                self.carrying = None
+                ev.append(('grip', {'p': 'open'}))
+                self._go('BACKOFF', now, 'grip check: empty')
+                return 0.0, 0.0, ev
+            if verdict in ('single', 'multiple'):
+                self.pick_checked = True        # the gripper camera saw it: no overhead pick check
+            self._go('CARRY', now, f'to zone {self.carrying}' + (f' (grip check: {verdict})' if verdict else ''))
             return 0.0, 0.0, ev
 
         if s == 'CARRY':
@@ -808,6 +879,40 @@ def min_duty_problem(cfg):
                               or not 0 <= floor <= 1):
         return f'autonomy.min_duty must be a number from 0 to 1, or null (got {floor!r})'
     return None
+
+
+def grip_check_problem(cfg):
+    o = dict(DEFAULTS, **cfg.get('autonomy', {}))
+    ids, seen = o['grip_check_ids'], set()
+    if not isinstance(o['grip_check'], bool):
+        return f'autonomy.grip_check must be true or false (got {o["grip_check"]!r})'
+    if not isinstance(ids, dict) or set(ids) - set(GRIP_VERDICTS):
+        return f'autonomy.grip_check_ids must map {"/".join(GRIP_VERDICTS)} to lists of HuskyLens IDs (got {ids!r})'
+    for verdict, values in ids.items():
+        if not isinstance(values, list) or not all(isinstance(i, int) and not isinstance(i, bool) and i > 0
+                                                   for i in values):
+            return f'autonomy.grip_check_ids.{verdict} must be a list of IDs 1, 2, ... (got {values!r})'
+        if seen & set(values):
+            return f'autonomy.grip_check_ids: ID(s) {sorted(seen & set(values))} used for two verdicts'
+        seen |= set(values)
+    for key in ('grip_check_empty_votes', 'grip_check_votes'):
+        if not isinstance(o[key], int) or isinstance(o[key], bool) or not 1 <= o[key] <= 5:
+            return f'autonomy.{key} must be a whole number 1..5 (the firmware takes 5 readings)'
+    return None
+
+
+def wait_for_gripcam(link, seconds=4.0):
+    """V3 refuses to start without the gripper camera. None = it answers."""
+    end, status = time.monotonic() + seconds, None
+    while time.monotonic() < end:
+        link.poll()
+        status = link.status if link.status_age() < 1.0 else None
+        if status and status.get('gripcam') == 'ok':
+            return None
+        time.sleep(0.05)
+    got = 'no firmware status' if not status else f"firmware reports gripcam={status.get('gripcam', 'missing (old firmware: flash firmware/robot_ctrl)')}"
+    return (f'No gripper camera ({got}). Check the HuskyLens wiring and its Protocol Type '
+            '(Serial 115200), or run without it: autonomy2.py, or add --set grip_check=false.')
 
 
 def drive_floor(o):
@@ -1032,6 +1137,11 @@ def run_real(args, cfg):
         print('Recording:', run_dir / 'video.avi', '(raw frames; trace video_frame = frame index)')
     try:
         with (run_dir / 'trace.jsonl').open('w', encoding='utf-8') as trace:
+            if sender and planner.o['grip_check']:
+                problem = wait_for_gripcam(link)
+                if problem:
+                    raise SystemExit('Autonomy not started. ' + problem)
+                print('Gripper camera: ok (grip check on)')
             if sender:
                 sender.event('start')
             while True:
@@ -1088,8 +1198,9 @@ def run_real(args, cfg):
                     canvas[:h, :w] = frame
                     state = 'DRY RUN' if dry_run else status.get('state', '?') if status else 'NO LINK'
                     fw_floor = status.get('min_duty') if status else None
+                    gripcam = f" | gripcam={status.get('gripcam') if status else '--'}" if planner.o['grip_check'] else ''
                     lines = [f'{profile.upper()} | {state} | vision={snap.status} | released={planner.released} | floor='
-                             + ('--' if fw_floor is None else f'{fw_floor:.2f}'), diagnostic_text(info),
+                             + ('--' if fw_floor is None else f'{fw_floor:.2f}') + gripcam, diagnostic_text(info),
                              f"frame={info['frame_ms']:.0f}ms | tag={info['tag_reason']} | orange cross=drive goal | q/x/ESC stop"]
                     if warning:
                         lines.append('grip/axle offset not calibrated')
@@ -1169,6 +1280,8 @@ def main(profile='v1'):
     print('Version:', profiles.TITLES[profile])
     if min_duty_problem(cfg):
         p.error(min_duty_problem(cfg))
+    if grip_check_problem(cfg):
+        p.error(grip_check_problem(cfg))
     if args.check_config:
         problems = setup_problems(cfg, args.config)
         print('Config:', args.config.resolve())
