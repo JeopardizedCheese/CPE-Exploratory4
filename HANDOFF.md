@@ -33,6 +33,7 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 ## Open work, in the user's priority order
 
 0. **V1 / V2 (built 2026-10-01, local, not pushed).** `autonomy.py` = V1 (unchanged), `autonomy2.py` = V2 (pile fix per [PILE_FIX_PLAN.md](PILE_FIX_PLAN.md) + outermost pile stone + buried-stone observations + target commitment + `skip_alone_s`); switches in `profiles.py`, same `calib.json`, same flags. Evidence in CHANGELOG "V1 / V2 split". Open: the user reviews the crop sheets in `evidence/v2-replay/` (acceptance bar item 3) before anything is pushed; then a field run of each version. Still undecided from the 2026-10-01 study: wall keep-out testing only vision's one `approach_deg`, parallax robot mask (hull), shadow rule, and the prototype `vision.robot_approach "free"` (local branch `proto/robot-side-approach`).
+0b. **360 servo (2026-10-01, uncommitted working copy of `firmware/robot_ctrl`).** The gripper servo is now a 360 (continuous) servo: a position pulse made it spin forever. `config.h` `SERVO_CONTINUOUS 1`: each open/close is a timed spin (open = 0 deg = counter-clockwise end, close turns clockwise), no pulse between moves, max 1.5 s per move. Compiles; not bench-tested. To do on the bench: power on with jaws open; if close turns the wrong way set `SERVO_CLOSE_PULSE_SIGN` +1; calibrate `SERVO_SPIN_DEG_PER_SEC` (200 = guess) until close stops at the stone; optional `SERVO_OPEN_EXTRA_DEG` ~15 if the jaw has an open end stop (cancels drift). `SERVO_CONTINUOUS 0` = old 180 servo code. Commit once it works.
 1. **Analyse the next recorded field run** (user/teammate will supply `runs/autonomy/<time>/` with `trace.jsonl` + `video.avi`): check pulse behaviour via trace keys `turn_phase`, `turn_pulse_s`, `turn_planned_deg`, `turn_moved_deg`, `pulse_gain`, `stalled`, `predict_mm`, `backoff_mm`. Compare real pulse rotation with `PULSE_TABLE`. New: check wall recovery on the real robot (`wall_phase`, `wall_reason`, `wall_clearance_mm`; how far one 0.15 s drive pulse and one 0.2 s turn pulse really move; whether a robot pinned on a wall gets free). `WALL_RECOVERY.md` has a field check procedure.
 2. **Stop overshoot in APPROACH** (analysed 2026-09-30, user has not chosen yet): options offered, in the suggested order: (a) bench test firmware short-brake (`inengmotor.brake()`) on a zero command vs coast — needs a reflash, and check the driver chip really brakes with both inputs high; (b) speed-proportional stop lead in APPROACH only (`grip_tol + speed × stop_lead_s`), test-first; (c) a coast term in `sim.py` so (b) can be validated. Fallback: pulse-driving APPROACH like pulse turning (precise, slower).
 3. **Drive floor from the duty sweep**: `motion_control.py --test-duty` (forward/left/right, `runs/motion/`) gives the lowest duty that reliably moves and turns the robot on a charged battery. Use it as `--set min_duty=X` for autonomy (no reflash); once settled, put it in `calib.json` or `MIN_DUTY`. `PULSE_TABLE` and `sim.FIELD_PARAMS` (stall_duty 0.65 assumed) are fitted at 0.71 and need a refit from the new runs.
@@ -52,6 +53,85 @@ Detailed in the commit messages (`git log 2f23e6e..92d8e1d`). On the original au
 - Match start: all gems start in one big pile and the team will make the robot crash into it. **The user will provide that code; don't write it.** Vision changes must keep the big pile's colour-0 observation.
 - No field testing time is left (2026-10-01): judge changes by replay of recorded runs and tests; offer config switches as the fallback at the match.
 - Robot ESP32 is on the team hotspot at a fixed private IP (see `firmware/robot_ctrl/config.h`); camera index 1.
+
+## Running V1 and V2, end to end
+
+V1 = `autonomy.py` (field-tested), V2 = `autonomy2.py` (V1 + pile fix + outermost pile stone + target commitment).
+Same `calib.json`, same flags; neither writes `calib.json`. V2 lives on branch `v1-v2-split` (not merged into `main`):
+`git switch v1-v2-split` first. Use `.venv/bin/python` from the repo root. Practice field: add
+`--config minifield/calib_minifield.json` to **every** command below (default config: `calib.json`).
+
+**0. Firmware (once, after any change to `firmware/robot_ctrl/config.h`).** Flash `firmware/robot_ctrl`
+(ESP32 Dev Module, Arduino core 3.x). `GRIP_OPEN_DEG`/`GRIP_CLOSE_DEG` must equal `autonomy.grip_open/close`
+in the config (now 0/100). Gripper servo: see "360 servo" under open work. Then check the link and gripper:
+```bash
+.venv/bin/python firmware_check.py <ESP_IP>                 # flags: --port 4211, --grip-open 0, --grip-close 100
+```
+
+**1. Camera (once per camera / resolution).**
+```bash
+.venv/bin/python camera_probe.py 1 --try-config             # flags: --config, --size 1280x720, --mjpg, --seconds 5
+```
+
+**2. Field (every session: the team recalibrates each run).** Empty field, robot off the field.
+```bash
+.venv/bin/python calibrate_arena.py 1                       # click 4 corners clockwise, s = save (also background.png); flag: --config
+.venv/bin/python find_zones.py                              # flags: --config, --labels 3 6 (IDs in printed order), --yes,
+                                                            #        --margin-mm 20, --ring-mm 8, --min-saturation N
+.venv/bin/python sample_hsv.py 1                            # under this light, >= 5 patches per colour; flags: --config,
+                                                            #        --samples PATH, --purpose calibration|evaluation, --zoom 1|2
+.venv/bin/python autonomy.py --check-config                 # lists anything missing; prints "Version: V1"
+```
+Robot geometry (only when the arm/tag changes): `robot_tag.grip_offset_mm`, `footprint_mm`, `camera_height_mm`,
+`camera_floor_xy_mm` in the config (ruler is preferred; `calibrate_grip.py 1 [--axle] [--write] [--samples 60]`).
+
+**3. Check vision before driving.** Put stones (and a pile) on the field, robot with tag in view.
+```bash
+.venv/bin/python detect_live.py 1                           # V1 vision
+.venv/bin/python detect_live.py 1 --v2                      # V2 vision: pile edge stones, magenta = outermost stone
+                                                            # flags: --config, --video FILE (replay), --headless, --debug,
+                                                            #        --no-robot-mask; green = target, orange = seen only
+```
+
+**4. Dry run (camera + planner, no robot commands).**
+```bash
+.venv/bin/python autonomy.py  --dry-run --camera 1          # V1
+.venv/bin/python autonomy2.py --dry-run --camera 1          # V2
+```
+
+**5. Real run.** Robot on the field, tag visible; q / x / ESC stops.
+```bash
+.venv/bin/python autonomy.py  <ESP_IP> --camera 1 --record  # V1
+.venv/bin/python autonomy2.py <ESP_IP> --camera 1 --record  # V2 (run folder ends in -v2)
+```
+Runner flags (both): `--camera N`, `--config PATH`, `--record` (video.avi beside trace.jsonl), `--record-fps N`,
+`--headless`, `--show-full-frame` (uncropped camera + field outline), `--dry-run`, `--check-config`, `--port 4211`,
+`--log-dir runs/autonomy`. Simulator: `--sim`, `--show`, `--scenario pile|scattered`, `--seconds N`, `--seed N`,
+`--noise`, `--field-physics [charged|low-battery]`.
+
+`--set KEY=VALUE` (repeatable; typos rejected; saved in the run's `config.json`, `calib.json` untouched):
+
+| Switch | V1 | V2 | |
+| --- | --- | --- | --- |
+| `vision.pile_edge_pixels=legacy\|nearest` | legacy | nearest | pile stones' pale rim belongs to the stone |
+| `vision.own_reach_mm=N` | 15 | 15 | reach of that rim (nearest mode) |
+| `vision.pile_outermost=true\|false` | false | true | one outermost stone per stuck pile |
+| `vision.pile_regions=true\|false` | false | true | buried pile stones reported with their colour |
+| `commit_target=true\|false` | false | true | keep a locked stone while it is still seen |
+| `skip_alone_s=N\|null` | null | 6 | retry the only skipped stone after N s |
+| `min_duty=X` | config | config | drive floor 0..1 (firmware must report `min_duty`) |
+| `color_alias={}` | config | config | practice field: turn colour aliasing off |
+| any other `autonomy` key | | | e.g. `cruise=0.25`, `servo_timeout_s=3`, `timeouts_s={"ALIGN": 8}` |
+
+Examples: V2 without the outermost rule: `autonomy2.py <ESP_IP> --camera 1 --record --set vision.pile_outermost=false`;
+V1 with only the pile fix: `autonomy.py <ESP_IP> --camera 1 --record --set vision.pile_edge_pixels=nearest`.
+
+**6. After a run.** Each run: `runs/autonomy/<time>-<id>[-v2]/` with `config.json` (has `"profile"`), `trace.jsonl`,
+`video.avi` (with `--record`). Replay vision: `detect_live.py --video runs/autonomy/<run>/video.avi [--v2]`.
+Compare V1/V2 vision on recorded runs: `evidence/v2-replay/compare_v1_v2.py RUN[,RUN] OUT_PREFIX` (needs the
+run's empty-field reference). Planner in the simulator: `sim_bench.py [--v2] [--seeds 6] [--seconds 180]
+[--physics charged|low-battery|ideal] [--set KEY=VALUE] [--config PATH]` (it never runs vision, so it only
+compares the planner switches). Tests: `.venv/bin/python -m unittest discover -s tests` (202 pass).
 
 ## Useful commands
 
