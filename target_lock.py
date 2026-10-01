@@ -7,6 +7,13 @@ locks one target and keeps it until there is a real reason to drop it:
   - a different known colour is seen at its position
   - the planner calls done() (placed) or release()
 
+track_observations=True (V2, autonomy.commit_target): the lock also follows the stone
+through plain observations of its colour, so a stone that is still seen at its spot stays
+locked when vision stops offering it as a pickable target (the robot closing in blocks its
+corridor; inside a pile). The approach and confidence from the lock are kept. The colour
+check then only runs when no stone of the locked colour is seen there, so a neighbour of
+another colour within match_mm no longer breaks the lock.
+
 Targets are dicts in the vision packet format:
     {'color': 2, 'x': 68.8, 'y': 61.7, 'confidence': 0.55, 'approach_deg': -90.0}
 x, y in arena mm. The colour chosen at lock time never changes.
@@ -15,9 +22,10 @@ import math
 
 
 class TargetLock:
-    def __init__(self, max_missing_s=1.0, match_mm=30.0):
+    def __init__(self, max_missing_s=1.0, match_mm=30.0, track_observations=False):
         self.max_missing_s = max_missing_s
         self.match_mm = match_mm
+        self.track_observations = track_observations
         self.target = None          # locked target dict (colour fixed at lock time)
         self.last_seen = 0.0
         self.reason = 'idle'
@@ -32,12 +40,18 @@ class TargetLock:
         Returns the locked target or None."""
         if self.target is not None:
             same = [t for t in targets if t['color'] == self.target['color'] and self._near(t, self.target)]
+            seen = [o for o in observations if o['color'] == self.target['color'] and self._near(o, self.target)]
             if same:
                 best = min(same, key=lambda t: math.hypot(t['x'] - self.target['x'], t['y'] - self.target['y']))
                 color = self.target['color']
                 self.target = dict(best, color=color)
                 self.last_seen = now
                 self.reason = 'tracking'
+            elif self.track_observations and seen:
+                best = min(seen, key=lambda o: math.hypot(o['x'] - self.target['x'], o['y'] - self.target['y']))
+                self.target = dict(self.target, x=best['x'], y=best['y'])
+                self.last_seen = now
+                self.reason = 'seen'
             elif any(o['color'] not in (0, self.target['color']) and self._near(o, self.target)
                      for o in list(targets) + list(observations)):
                 self.release('colour changed')

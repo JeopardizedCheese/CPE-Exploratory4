@@ -53,8 +53,13 @@ def main():
     parser.add_argument('--headless', action='store_true')
     parser.add_argument('--debug', action='store_true', help='Print one line per blob (slow)')
     parser.add_argument('--no-robot-mask', action='store_true', help='Do not hide the robot (tag) from detection')
+    parser.add_argument('--v2', action='store_true',
+                        help='V2 vision (autonomy2.py): pile fix, outermost pile stone, buried stones shown')
     args = parser.parse_args()
     cfg = json.loads(args.config.read_text())
+    if args.v2:
+        import profiles
+        profiles.apply_profile(cfg, 'v2')
     if args.debug:
         cfg.setdefault('vision', {})['debug_blobs'] = True
     background_path = args.config.parent / cfg.get('background_path', 'background.png')
@@ -106,6 +111,8 @@ def main():
                 for o in observations:
                     eligible = o.stable and o.isolated
                     color = (0, 220, 0) if eligible else (0, 180, 255)
+                    if eligible and o.reason == 'pile_outermost':
+                        color = (255, 0, 255)            # V2: outermost stone of a pile without a free edge
                     point = (round(o.x), round(o.y))
                     cv2.circle(frame, point, 12, color, 2)
                     if o.approach_deg is not None:   # pile mode: arrow = robot's driving direction
@@ -114,7 +121,7 @@ def main():
                         cv2.arrowedLine(frame, tail, point, color, 2, tipLength=.3)
                     cv2.putText(frame, f'{o.color or "?"} {o.confidence:.2f}', point,
                                 cv2.FONT_HERSHEY_SIMPLEX, .5, color, 1)
-                cv2.putText(frame, status, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .7, (0, 0, 255), 2)
+                cv2.putText(frame, status + (' V2' if args.v2 else ''), (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .7, (0, 0, 255), 2)
                 cv2.putText(frame, f'{fps:4.1f} fps  {process_ms:4.0f} ms', (10, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 0, 255), 2)
                 draw_robot(frame, snap, per_px)

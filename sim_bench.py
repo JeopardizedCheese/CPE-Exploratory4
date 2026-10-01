@@ -3,10 +3,13 @@
     python sim_bench.py                                  # current calib.json settings
     python sim_bench.py --set turn_mode=fixed            # override autonomy values
     python sim_bench.py --physics low-battery --seeds 8
+    python sim_bench.py --v2                             # V2 planner switches (profiles.py)
 
 Per scenario it prints stones placed, turn hunting (turn direction reversed within 1 s),
 the largest single-turn overshoot, and time with the tag lost. Simulation only: it shows
 whether a change helps against the measured robot behaviour, not that the robot will do it.
+The simulator makes its own detections (it never runs vision.py), so V2's vision switches
+change nothing here; only its planner switches (commit_target, skip_alone_s) are compared.
 """
 import argparse
 import json
@@ -57,16 +60,18 @@ def main():
     ap.add_argument('--seconds', type=float, default=180)
     ap.add_argument('--set', action='append', default=[], metavar='KEY=VALUE',
                     help='override calib.json "autonomy" values, e.g. turn_mode=fixed or cruise=0.25')
+    ap.add_argument('--v2', action='store_true', help='V2 profile (autonomy2.py) instead of V1')
     args = ap.parse_args()
     cfg = json.loads(args.config.read_text(encoding='utf-8'))
     try:
-        autonomy.apply_overrides(cfg, args.set)
+        autonomy.prepare_config(cfg, 'v2' if args.v2 else 'v1', args.set)
     except ValueError as exc:
         ap.error(str(exc))
     if autonomy.min_duty_problem(cfg):
         ap.error(autonomy.min_duty_problem(cfg))
     physics = {'charged': sim.FIELD_PARAMS, 'low-battery': sim.LOW_BATTERY_PARAMS, 'ideal': {}}[args.physics]
-    print(f"physics={args.physics} seeds={args.seeds} seconds={args.seconds:.0f} overrides={args.set or 'none'}")
+    print(f"{'V2' if args.v2 else 'V1'} physics={args.physics} seeds={args.seeds} seconds={args.seconds:.0f} "
+          f"overrides={args.set or 'none'}")
     for scenario in ('scattered', 'pile'):
         placed, hunting, lost = run(cfg, scenario, range(args.seeds), args.seconds, physics)
         print(f'  {scenario:9}  placed {placed:3}  turn hunting {hunting:4}  tag lost {lost:4.1f}% of frames')

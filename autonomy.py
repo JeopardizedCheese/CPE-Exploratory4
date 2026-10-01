@@ -6,6 +6,10 @@
     python autonomy.py --dry-run --camera 1       # camera/planner only, no robot commands
     python autonomy.py 10.178.188.50 --camera 1 --record   # also save video.avi for replay
     python autonomy.py 10.178.188.50 --camera 1 --record --set min_duty=0.5   # lower drive floor
+    python autonomy2.py 10.178.188.50 --camera 1 --record   # V2: pile fix + outermost + commit
+
+This file runs V1, the field-tested behaviour; autonomy2.py runs V2 with the same calib.json
+and the same flags. The differences are switches, listed in profiles.py.
 
 The planner is deliberately simple:
 
@@ -93,6 +97,12 @@ DEFAULTS = {
     # 'raw_color'). Colours with no zone and no alias are never picked, only avoided.
     # Competition: leave empty (an aliased stone scores as wrong). Off per run: --set color_alias={}
     'color_alias': {},
+    # V2 switches (profiles.py; V1 = these defaults). commit_target: a locked stone stays locked
+    # while it is still seen at its spot, even when vision no longer offers it as a target.
+    # skip_alone_s: a stone skipped after a failed attempt is retried after this many seconds
+    # when it is the only stone on offer (instead of parking for the whole skip_s). None = off.
+    'commit_target': False,
+    'skip_alone_s': None,
 }
 
 
@@ -139,7 +149,7 @@ class Planner:
         self.wall = WallGuard(cfg, self.o)
         self.park = self.wall.clamp_tag_goal(*(self.o['park_mm'] or [w * 0.85, h * 0.5]))
         self._wall_resume_state = None
-        self.lock = TargetLock(max_missing_s=1.0, match_mm=35)
+        self.lock = TargetLock(max_missing_s=1.0, match_mm=35, track_observations=bool(self.o['commit_target']))
         self.state, self.since = 'SEARCH', 0.0
         self.skip = []                      # (x, y, until)
         self.pick_pos = None
@@ -191,10 +201,13 @@ class Planner:
         c = self.alias.get(t['color'])
         return t if c is None else dict(t, color=c, raw_color=t['color'])
 
-    def _usable(self, t, now):
+    def _usable(self, t, now, skip_for=None):
+        """skip_for: count a skip entry only for this many seconds after it was made
+        (skip_alone_s); None = for its full skip_s."""
         if t['color'] not in self.zones:
             return False
-        return not any(now < until and math.hypot(t['x'] - x, t['y'] - y) < self.o['skip_mm']
+        return not any(now < until and (skip_for is None or now < until - self.o['skip_s'] + skip_for)
+                       and math.hypot(t['x'] - x, t['y'] - y) < self.o['skip_mm']
                        for x, y, until in self.skip)
 
     def _jaw_stone(self, pose, observations, now):
@@ -553,6 +566,9 @@ class Planner:
             pose = self._predict(pose)
         o, s = self.o, self.state
         usable = [t for t in targets if self._usable(t, now)]
+        if not usable and o['skip_alone_s'] is not None:
+            # every stone on offer is being skipped: retry sooner rather than park (V2)
+            usable = [t for t in targets if self._usable(t, now, o['skip_alone_s'])]
         heading = math.radians(pose.heading_deg)
 
         if s == 'SEARCH':
@@ -751,17 +767,39 @@ def grip_calibration_warning(cfg):
 
 def apply_overrides(cfg, items):
     """--set KEY=VALUE: replace calib.json "autonomy" values for this run. Values are JSON
-    (0.5, true, null, {"ALIGN": 8}); anything else stays a string (turn_mode=fixed)."""
+    (0.5, true, null, {"ALIGN": 8}); anything else stays a string (turn_mode=fixed).
+    --set vision.KEY=VALUE sets one of the named vision switches (profiles.VISION_SWITCHES)."""
+    from profiles import VISION_SWITCHES
     for item in items:
         key, sep, value = item.partition('=')
+        section, dot, name = key.partition('.')
+        if sep and dot and section == 'vision' and name in VISION_SWITCHES:
+            try:
+                value = json.loads(value)
+            except ValueError:
+                pass
+            valid, expected = VISION_SWITCHES[name]
+            if not valid(value):
+                raise ValueError(f'--set {item}: vision.{name} must be {expected}')
+            cfg.setdefault('vision', {})[name] = value
+            continue
         if not sep or key not in DEFAULTS:
             raise ValueError(f'--set {item}: expected KEY=VALUE with KEY one of the autonomy options '
-                             f'({", ".join(sorted(DEFAULTS))})')
+                             f'({", ".join(sorted(DEFAULTS))}) or vision.KEY with KEY one of '
+                             f'({", ".join(sorted(VISION_SWITCHES))})')
         try:
             value = json.loads(value)
         except ValueError:
             pass
         cfg.setdefault('autonomy', {})[key] = value
+
+
+def prepare_config(cfg, profile, overrides):
+    """In memory only: the profile's switches (profiles.py), then --set (which wins)."""
+    import profiles
+    profiles.apply_profile(cfg, profile)
+    apply_overrides(cfg, overrides)
+    return cfg
 
 
 def min_duty_problem(cfg):
@@ -964,7 +1002,9 @@ def run_real(args, cfg):
         raise SystemExit('No background.png: run calibrate_arena.py first')
     perception = Perception(cfg, background)
     planner = Planner(cfg)
-    run_dir = Path(args.log_dir) / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:6])
+    profile = cfg.get('profile', 'v1')
+    run_dir = Path(args.log_dir) / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:6]
+                                    + ('' if profile == 'v1' else '-' + profile))
     run_dir.mkdir(parents=True)
     (run_dir / 'config.json').write_text(json.dumps(cfg, indent=2), encoding='utf-8')
     cap = cv2.VideoCapture(args.camera if args.camera is not None else cfg.get('camera_index', 0))
@@ -1048,7 +1088,7 @@ def run_real(args, cfg):
                     canvas[:h, :w] = frame
                     state = 'DRY RUN' if dry_run else status.get('state', '?') if status else 'NO LINK'
                     fw_floor = status.get('min_duty') if status else None
-                    lines = [f'{state} | vision={snap.status} | released={planner.released} | floor='
+                    lines = [f'{profile.upper()} | {state} | vision={snap.status} | released={planner.released} | floor='
                              + ('--' if fw_floor is None else f'{fw_floor:.2f}'), diagnostic_text(info),
                              f"frame={info['frame_ms']:.0f}ms | tag={info['tag_reason']} | orange cross=drive goal | q/x/ESC stop"]
                     if warning:
@@ -1089,8 +1129,10 @@ def run_real(args, cfg):
         print('released', planner.released, 'events:', planner.events_log[-10:])
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(profile='v1'):
+    import profiles
+    p = argparse.ArgumentParser(description=__doc__ if profile == 'v1' else profiles.__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('esp_ip', nargs='?')
     p.add_argument('--port', type=int, default=4211)
     p.add_argument('--camera', type=int)
@@ -1114,15 +1156,17 @@ def main():
                    help='sim: MIN_DUTY, turn behaviour, walls and tag loss near edges as measured on the field')
     p.add_argument('--set', action='append', default=[], metavar='KEY=VALUE',
                    help='override a calib.json "autonomy" value for this run, e.g. --set min_duty=0.5 '
-                        '--set creep=0.25 (saved in the run folder config.json)')
+                        '--set creep=0.25, or a vision switch: --set vision.pile_edge_pixels=nearest '
+                        '(saved in the run folder config.json; calib.json is not changed)')
     args = p.parse_args()
     if not args.config.is_file():
         p.error(f'Config not found: {args.config}. Pass --config with your actual calibrated JSON file.')
     cfg = json.loads(args.config.read_text(encoding='utf-8'))
     try:
-        apply_overrides(cfg, args.set)
+        prepare_config(cfg, profile, args.set)
     except ValueError as exc:
         p.error(str(exc))
+    print('Version:', profiles.TITLES[profile])
     if min_duty_problem(cfg):
         p.error(min_duty_problem(cfg))
     if args.check_config:
