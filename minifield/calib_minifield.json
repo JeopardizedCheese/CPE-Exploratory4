@@ -14,7 +14,7 @@
     "cruise": 0.3,
     "min_duty": 0.65,
     "grip_open": 0,
-    "grip_close": 100,
+    "grip_close": 250,
     "approach_max_side_mm": 25,
     "color_alias": {
       "1": 3,
@@ -177,8 +177,8 @@
     "family": "36h11",
     "size_mm": 120,
     "height_mm": 185,
-    "camera_height_mm": null,
-    "camera_floor_xy_mm": null,
+    "camera_height_mm": 2100,
+    "camera_floor_xy_mm": [825, 320],
     "grip_offset_mm": [
       140,
       0
