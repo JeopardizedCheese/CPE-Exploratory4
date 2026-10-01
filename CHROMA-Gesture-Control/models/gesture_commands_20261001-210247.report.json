@@ -1,0 +1,2226 @@
+{
+  "created_utc": "2026-10-01T14:02:48.216144+00:00",
+  "model": "gesture_commands_20261001-210247.npz",
+  "feature_version": "wrist-relative-palm-scale-mirrored-xyz-v1",
+  "label_set": "commands-v1",
+  "sklearn_version": "1.7.2",
+  "hidden_layers": [
+    64,
+    32
+  ],
+  "seed": 42,
+  "threshold": 0.5,
+  "margin": 0.0,
+  "gate_chosen_on": "validation",
+  "gate_table_validation": [
+    {
+      "threshold": 0.5,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.5,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.5,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.5,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.6,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.6,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.6,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.6,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.7,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.7,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.7,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.7,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.8,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.8,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.8,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.8,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.85,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.85,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.85,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.85,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.9,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.9,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.9,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.9,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 1.0,
+      "accuracy": 1.0
+    },
+    {
+      "threshold": 0.95,
+      "margin": 0.0,
+      "dangerous_rate": 0.0,
+      "command_recall": 0.9940476190476191,
+      "accuracy": 0.9947916666666666
+    },
+    {
+      "threshold": 0.95,
+      "margin": 0.1,
+      "dangerous_rate": 0.0,
+      "command_recall": 0.9940476190476191,
+      "accuracy": 0.9947916666666666
+    },
+    {
+      "threshold": 0.95,
+      "margin": 0.2,
+      "dangerous_rate": 0.0,
+      "command_recall": 0.9940476190476191,
+      "accuracy": 0.9947916666666666
+    },
+    {
+      "threshold": 0.95,
+      "margin": 0.3,
+      "dangerous_rate": 0.0,
+      "command_recall": 0.9940476190476191,
+      "accuracy": 0.9947916666666666
+    }
+  ],
+  "training_iterations": 44,
+  "training_loss": 0.004904642148885515,
+  "warnings": [],
+  "data": {
+    "train": {
+      "sessions": [
+        "20261001-201848-e3ff53",
+        "20261001-203116-d0a37b",
+        "20261001-203814-f3e5bb"
+      ],
+      "samples": {
+        "NONE/L": 180,
+        "NONE/R": 180,
+        "STOP/L": 180,
+        "STOP/R": 180,
+        "FORWARD/L": 180,
+        "FORWARD/R": 180,
+        "BACK/L": 180,
+        "BACK/R": 180,
+        "LEFT/L": 180,
+        "LEFT/R": 180,
+        "RIGHT/L": 180,
+        "RIGHT/R": 180,
+        "GRIP_OPEN/L": 180,
+        "GRIP_OPEN/R": 180,
+        "GRIP_CLOSE/L": 180,
+        "GRIP_CLOSE/R": 180
+      }
+    },
+    "validation": {
+      "sessions": [
+        "20261001-204620-f5eedc"
+      ],
+      "samples": {
+        "NONE/L": 60,
+        "NONE/R": 60,
+        "STOP/L": 60,
+        "STOP/R": 60,
+        "FORWARD/L": 60,
+        "FORWARD/R": 60,
+        "BACK/L": 60,
+        "BACK/R": 60,
+        "LEFT/L": 60,
+        "LEFT/R": 60,
+        "RIGHT/L": 60,
+        "RIGHT/R": 60,
+        "GRIP_OPEN/L": 60,
+        "GRIP_OPEN/R": 60,
+        "GRIP_CLOSE/L": 60,
+        "GRIP_CLOSE/R": 60
+      }
+    },
+    "test": {
+      "sessions": [
+        "20261001-205330-58850b"
+      ],
+      "samples": {
+        "NONE/L": 60,
+        "NONE/R": 60,
+        "STOP/L": 60,
+        "STOP/R": 60,
+        "FORWARD/L": 60,
+        "FORWARD/R": 60,
+        "BACK/L": 60,
+        "BACK/R": 60,
+        "LEFT/L": 60,
+        "LEFT/R": 60,
+        "RIGHT/L": 60,
+        "RIGHT/R": 60,
+        "GRIP_OPEN/L": 60,
+        "GRIP_OPEN/R": 60,
+        "GRIP_CLOSE/L": 60,
+        "GRIP_CLOSE/R": 60
+      }
+    }
+  },
+  "recordings": [
+    {
+      "path": "20261001-201848-e3ff53/BACK_L_51e6e18bc031.npz",
+      "sha256": "4814c73806e8f75fc1deb3c1d0aced68e6833d3025d453f6ab5291d280279fdb",
+      "label": "BACK",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/BACK_R_b7e39be3b798.npz",
+      "sha256": "2f4ff86ac572082e50f4781e2c6a74d6c2e56aff2f6e68d065725d128f6c4bde",
+      "label": "BACK",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/FORWARD_L_2de8c30e62a0.npz",
+      "sha256": "9783f09ea00224231013453423acb59a6d08fc47d79ab8617b78bc0175756bb3",
+      "label": "FORWARD",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/FORWARD_R_132e355e735f.npz",
+      "sha256": "aff33756cb6304fb3f9a8604d68eb0e55f3c039c4412a9a8a2b1e4ccfaa9fc0b",
+      "label": "FORWARD",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/GRIP_CLOSE_L_6631f83471ea.npz",
+      "sha256": "8a3c47f1b1f04a2688d263249779ee7f4419da896ceafdaaac1fbcb6939f5a45",
+      "label": "GRIP_CLOSE",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/GRIP_CLOSE_R_2741aea68be6.npz",
+      "sha256": "abe3bdcf8906645cf565b41485d830930ea4e917fa54c3135299824b20f6fcde",
+      "label": "GRIP_CLOSE",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/GRIP_OPEN_L_84e9ad79bf9b.npz",
+      "sha256": "9dd80752a88b83b2b264d69552492794522e206eb14edc19d43b7aaf946b2448",
+      "label": "GRIP_OPEN",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/GRIP_OPEN_R_28093b611ba5.npz",
+      "sha256": "5e4c7d8d49ced3df3db4fc31b2d617ed72bcc0cbf90a4761572453687d2a9c29",
+      "label": "GRIP_OPEN",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/LEFT_L_0628022eaee8.npz",
+      "sha256": "90d94c17bce4a1aa563205c5bfad8036b3b494e9885375350b4ffe617caa3f21",
+      "label": "LEFT",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/LEFT_R_7829c17ede83.npz",
+      "sha256": "1a59e6f42045ba6f495e4339e4a29ee76dbb79bdc804d5dd9e020d53bbd3c3d8",
+      "label": "LEFT",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/NONE_L_f3ea5932c732.npz",
+      "sha256": "4029672f668404a5a210b23221d5fff2837b7a5b2be4127737233c00b70d0dbe",
+      "label": "NONE",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/NONE_R_b9357f47de25.npz",
+      "sha256": "6ada6ce9dc691ba84dd4567ef0184fca2e147797ce6bf6c9f1ee944ca7871359",
+      "label": "NONE",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/RIGHT_L_a32eb1a9a6d6.npz",
+      "sha256": "0117d486dc309e4da8c54416f9608c55e86ec99b3ba44088f3476a936e3de9f5",
+      "label": "RIGHT",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/RIGHT_R_3fd8557e3bf5.npz",
+      "sha256": "8e19173a6f10a89cd534ce1e32499977d3ea67eb38c1491bf9240615d3956d17",
+      "label": "RIGHT",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/STOP_L_0edd3aeccb3b.npz",
+      "sha256": "62e0680820bec04511f37ba73a7b0f91f58df83464abc6708b1862640808adfe",
+      "label": "STOP",
+      "hand": "L",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-201848-e3ff53/STOP_R_0328d9782741.npz",
+      "sha256": "7a6b0e3dcd0b0e56e160771ee62994781971bb921743943fa78fd4fe864ccf37",
+      "label": "STOP",
+      "hand": "R",
+      "session": "20261001-201848-e3ff53",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/BACK_L_311fc60e6563.npz",
+      "sha256": "3f3ae5e3fd79c3a6a9d93f6fbc978722811a96efb74d0616c50648ce2c2d5ffe",
+      "label": "BACK",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/BACK_R_e8c009f02560.npz",
+      "sha256": "6166d764beb7aae95e9288b56940e20abfe59102a2d320832195ab079c5ea3dc",
+      "label": "BACK",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/FORWARD_L_613a074bae27.npz",
+      "sha256": "a35e28934032954b4b69683f4e604345b9cc17267caa1047c2ccd970c17d7edf",
+      "label": "FORWARD",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/FORWARD_R_9aabbffd4962.npz",
+      "sha256": "a59e692d7dd2bdef17111651c5637761ad6dae696973eca4e200e9d63626868e",
+      "label": "FORWARD",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/GRIP_CLOSE_L_24f490441e54.npz",
+      "sha256": "a29134734d3eb63e00aa32fd2cfdb925d0c03eac36d9e40dd91b0632eda6a1dc",
+      "label": "GRIP_CLOSE",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/GRIP_CLOSE_R_47b28d0667bb.npz",
+      "sha256": "682b1106000faf40cc3c8760859dc1b96486c29473002e1a1c6453b821ae374f",
+      "label": "GRIP_CLOSE",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/GRIP_OPEN_L_6474e33df798.npz",
+      "sha256": "59f6228e76ee615fd03c3edc0b368f24d47c6385c90c98e55c82c0fdd8968ac3",
+      "label": "GRIP_OPEN",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/GRIP_OPEN_R_a6caab4c10fa.npz",
+      "sha256": "03cc10767f155e978fb1620fee2fb0c1fb04bce6a1edec41dede0d4ac9780d7d",
+      "label": "GRIP_OPEN",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/LEFT_L_226fe0b6e918.npz",
+      "sha256": "e2b72a8e1b48af3483ba260a276a2b4ee3058189c7c1308448e3359ccafdd858",
+      "label": "LEFT",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/LEFT_R_d0a37e5aec13.npz",
+      "sha256": "933119128e79a9af4c552d583bcbc38b1c128e98146157779c7db4234d58f83a",
+      "label": "LEFT",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/NONE_L_fce06b2c66fb.npz",
+      "sha256": "57245c0701dcc52608112b95558542d3bc38696b4fa41dd93e671017d839c8ef",
+      "label": "NONE",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/NONE_R_3f7e7ebb0758.npz",
+      "sha256": "b9c4f44a5a46857726e0e9c41f7515110e5ecbb73976e935242022742a63335c",
+      "label": "NONE",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/RIGHT_L_3aca9589ad96.npz",
+      "sha256": "b66826c7b7e317155e7a70d2036e24b51e059cda7930c84722534a31c6aa690f",
+      "label": "RIGHT",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/RIGHT_R_58401d8c754c.npz",
+      "sha256": "1fe13d5cbdca6e6f0e082263b8192cb9208290e8ae476cadcd06038a77ed8516",
+      "label": "RIGHT",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/STOP_L_5888590a9f7f.npz",
+      "sha256": "126656898426a017edee727c74d1c7f9fab40c1042c329bc38928b0b845795c8",
+      "label": "STOP",
+      "hand": "L",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203116-d0a37b/STOP_R_0eae98ed75a4.npz",
+      "sha256": "a1ed57f58d23fcc826e123c6f85015a24f29114ef46cf3db5db2a04201901507",
+      "label": "STOP",
+      "hand": "R",
+      "session": "20261001-203116-d0a37b",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/BACK_L_460e02456d78.npz",
+      "sha256": "1118fcdc332ece0b8fbb1262f2d2af93fae10394a3d5653f1b43b09425de974c",
+      "label": "BACK",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/BACK_R_ac9379a6c80b.npz",
+      "sha256": "bb23a757bbcc7fd1d51c913361a555de218654efa9ba5de8b2eb481b71a2e4a4",
+      "label": "BACK",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/FORWARD_L_953dead1eb9d.npz",
+      "sha256": "2c4aad15c09983fc5304e8e1ddd3175bf109689fee10f5c5e83680d6594a61aa",
+      "label": "FORWARD",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/FORWARD_R_7ad65575b9a0.npz",
+      "sha256": "5c7d500dd27279e86f8b179d488fb3c7803b7b84a5918bf37bb5ff2aba51cf28",
+      "label": "FORWARD",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/GRIP_CLOSE_L_4e72124dc7dd.npz",
+      "sha256": "46c52cbe843c15d59221c1854b014c46a4978b7f01e589861bc66aba6b6b66aa",
+      "label": "GRIP_CLOSE",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/GRIP_CLOSE_R_bb5d0bfebb6c.npz",
+      "sha256": "d342e2880ff244eb6f19aaeaea9f31551e328b948f77fe9b0c9c1ba841b785a6",
+      "label": "GRIP_CLOSE",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/GRIP_OPEN_L_9c537b557f3b.npz",
+      "sha256": "74f93b23e194f882d0c5367eb40efd146142ba93234e013925aece2c5ae6461d",
+      "label": "GRIP_OPEN",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/GRIP_OPEN_R_3b62f745d8d1.npz",
+      "sha256": "4d4e0359c315b007bc8beed1e8ec9f67650ac9b2be85c3331d7584eed62772ca",
+      "label": "GRIP_OPEN",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/LEFT_L_2be3dc93589a.npz",
+      "sha256": "fb521aecac1c1ab5e7f4ae046f4948a5b9d2528ac8c606190826274afa631c07",
+      "label": "LEFT",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/LEFT_R_02a10ebfe878.npz",
+      "sha256": "24d54fc1adb67eb407e379c1282b489a2faa1c170b18e51d8795d8d688b697cb",
+      "label": "LEFT",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/NONE_L_475005825eeb.npz",
+      "sha256": "5387244230e4eaf51a07792eedd7c89426efdde72a02a0f4e35286baf6e9a8fb",
+      "label": "NONE",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/NONE_R_8918185bce3b.npz",
+      "sha256": "1a2df6cfc774bb5921844d0fb0e95b613836979573ca40624f6e0d083ecf7541",
+      "label": "NONE",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/RIGHT_L_8803b86089bb.npz",
+      "sha256": "6befe3c0d39d229f28a793a67f55d49f955a2efc74c3248415214e9fba16b4e9",
+      "label": "RIGHT",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/RIGHT_R_3234814346ff.npz",
+      "sha256": "43925e67b62cc61e4541476bc6fa5e5e3c9e5c26d5b2c8a187facedf7282d7bb",
+      "label": "RIGHT",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/STOP_L_df5f7d857a74.npz",
+      "sha256": "a88f017f7ab83fdf8c517d31c7276a2716be5f91578e5e25d899fabcdffd7f57",
+      "label": "STOP",
+      "hand": "L",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-203814-f3e5bb/STOP_R_4e05a645e5d3.npz",
+      "sha256": "3c7a04539154d6156a773fd8519f019409eecd76f0e71e95687e48e0377373df",
+      "label": "STOP",
+      "hand": "R",
+      "session": "20261001-203814-f3e5bb",
+      "split": "train",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/BACK_L_c6b537630daf.npz",
+      "sha256": "61e61e72b718f0a4e5130e77b540a5bd8113acc991bb08689f4eb36f02ff05dd",
+      "label": "BACK",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/BACK_R_77bed3f0623b.npz",
+      "sha256": "8ec45eafb58ceaa20c081c5d5f0460cc83f7f69b9ef8795ec82aaba4598907a9",
+      "label": "BACK",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/FORWARD_L_080f05f3562c.npz",
+      "sha256": "284298941595f904def07b88be7627c5cd5b64bd1f8237160368e644c31d998f",
+      "label": "FORWARD",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/FORWARD_R_625e8b8d9345.npz",
+      "sha256": "feb9357234fda1971781b5b27be2048210659fa60962ffa3c9a5536f3364ed14",
+      "label": "FORWARD",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/GRIP_CLOSE_L_8a191a1b1cd3.npz",
+      "sha256": "6b9872a70872cf38cf3af4dd279fcf497d6deb5a781e4cebee6229a58d590707",
+      "label": "GRIP_CLOSE",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/GRIP_CLOSE_R_c3335c607799.npz",
+      "sha256": "7c91e2243d2ee7da659e39dfd0c9c40be4b2a12a0eb9ad473a54028b97a1690b",
+      "label": "GRIP_CLOSE",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/GRIP_OPEN_L_96584b4eca0c.npz",
+      "sha256": "29193b525fda95cf741fbdef98bf6e874095a93cb74ec1550392f051fb394860",
+      "label": "GRIP_OPEN",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/GRIP_OPEN_R_34352e8abf5f.npz",
+      "sha256": "a5fc3f5b38582f8fa23299384836f9a41c628f42105e458908204f11f0431474",
+      "label": "GRIP_OPEN",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/LEFT_L_6d3e1cea51e5.npz",
+      "sha256": "64d72ef9816cac3cfde633ae775eefcf7df5fce6185a09fded592eedc98e92ea",
+      "label": "LEFT",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/LEFT_R_4542622162bf.npz",
+      "sha256": "fb689a6a3b32488d489af54c966079cbee4f93da3fc4f480e05d957c5d871463",
+      "label": "LEFT",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/NONE_L_8aac2468e0b7.npz",
+      "sha256": "35cdea60b7b22320ac2773a1c32ce0785df608dfdb65c58ec0a12bc2cc060097",
+      "label": "NONE",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/NONE_R_c3a0f6c3054f.npz",
+      "sha256": "f6cc5ea443e1e6d2a483803edf2e3d18311bc25ab4c5e424b0aedc359e53393c",
+      "label": "NONE",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/RIGHT_L_605406d47a92.npz",
+      "sha256": "3b0ab7498c0d815d220f3f44b5a4bc3cd158b9b166c8d6f5b36aab8f45fab10b",
+      "label": "RIGHT",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/RIGHT_R_1e5d2b268cb3.npz",
+      "sha256": "e683d8b1176af2db72b7bc2b6b39ad6fabbd9267453015601efbb1ffdda9631a",
+      "label": "RIGHT",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/STOP_L_4f384cea0eef.npz",
+      "sha256": "3c3a0ae8e6e3e7e97827c8681fc1b86c7738f52b1b9f9ad6ef2597c7c5fe7b72",
+      "label": "STOP",
+      "hand": "L",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-204620-f5eedc/STOP_R_2e488300ae05.npz",
+      "sha256": "e54aa7f71e2727c4b0cc2554f07a105e04cd0857c0a98a749cc54b598433f4d9",
+      "label": "STOP",
+      "hand": "R",
+      "session": "20261001-204620-f5eedc",
+      "split": "validation",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/BACK_L_a0753e111abf.npz",
+      "sha256": "3fcaa58bc705387acf9e4851517d8041ea11e946f7a0f1508a3967b5512bff50",
+      "label": "BACK",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/BACK_R_d507470b2ae9.npz",
+      "sha256": "748981abb205523615b766f58e5d2e4f3129d5aff567c1cfb276522270283428",
+      "label": "BACK",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/FORWARD_L_0a8fd36338c0.npz",
+      "sha256": "3a499f016e454628320f6e1770395b8bb1f4da971763f67d5e577328c6f765f5",
+      "label": "FORWARD",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/FORWARD_R_5f8c03206cf4.npz",
+      "sha256": "568282ac21542774fd28304d6b9e95afbbf95ca30d0851d48bcfb13d3277d8be",
+      "label": "FORWARD",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/GRIP_CLOSE_L_9feeb64825d9.npz",
+      "sha256": "e4939b678f92f13975e531038e390df7608529f4ba67f1a1d1b36694ecc30248",
+      "label": "GRIP_CLOSE",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/GRIP_CLOSE_R_ea3c89fa303f.npz",
+      "sha256": "48fc4140f277dee63a8c9da60c722f093b716e90432ed8a30bceca6581052ccd",
+      "label": "GRIP_CLOSE",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/GRIP_OPEN_L_3e523eeefb0d.npz",
+      "sha256": "59f20abbf43b0933bbd0e6c53e95e337de4e116af17da4fadb60950d05d9c26e",
+      "label": "GRIP_OPEN",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/GRIP_OPEN_R_0f88edc4b2e4.npz",
+      "sha256": "4146b25a3c31a1a874e7f69e92fa6e2131257efb1a42f7706eb18239495953a2",
+      "label": "GRIP_OPEN",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/LEFT_L_b102456f3ecd.npz",
+      "sha256": "89ce4547da7ceb290cd54f9ef49cc0554abfab328c345c6d44a461b738eb743d",
+      "label": "LEFT",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/LEFT_R_92f292c6af3d.npz",
+      "sha256": "463a748c54130cb7921416e7d5c020af50097163ccd61f813d0c01562917cb48",
+      "label": "LEFT",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/NONE_L_52faf135b8c6.npz",
+      "sha256": "1fa0dc98e07da2d4e57dbe261df8ca81a31d726514d6125337f1d727cee6ff45",
+      "label": "NONE",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/NONE_R_a87e745b0054.npz",
+      "sha256": "a739d455548a8d6ea9c10055081eb5be0b5a10d7d1849d25c5a536e61e9d3adb",
+      "label": "NONE",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/RIGHT_L_4e44ce3ec893.npz",
+      "sha256": "e40c1b9a5ae013d5adf206a86a108e31430dafd4208b59eeab21530fb2b818e3",
+      "label": "RIGHT",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/RIGHT_R_b0abe6477a44.npz",
+      "sha256": "d844ee1044372440558fa5adbbbebb5f39dde6353fb9a6ba2ab117e4d8014192",
+      "label": "RIGHT",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/STOP_L_8c0539e1aee6.npz",
+      "sha256": "127df8a87aa4a372907516c3f75ef5ae98c2a26768efbec0e81a2a9015cdf9e4",
+      "label": "STOP",
+      "hand": "L",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    },
+    {
+      "path": "20261001-205330-58850b/STOP_R_d98f3874dd8c.npz",
+      "sha256": "42dff3318f04289409d475aec5af6550da2c51e3bd366f3ab7f7449f73464658",
+      "label": "STOP",
+      "hand": "R",
+      "session": "20261001-205330-58850b",
+      "split": "test",
+      "samples": 60
+    }
+  ],
+  "splits": {
+    "train": {
+      "with_gate": {
+        "samples": 2880,
+        "accuracy": 1.0,
+        "dangerous_wrong": 0,
+        "dangerous_rate": 0.0,
+        "command_recall": 1.0,
+        "none_rate": 0.125,
+        "per_class_recall": {
+          "NONE": 1.0,
+          "STOP": 1.0,
+          "FORWARD": 1.0,
+          "BACK": 1.0,
+          "LEFT": 1.0,
+          "RIGHT": 1.0,
+          "GRIP_OPEN": 1.0,
+          "GRIP_CLOSE": 1.0
+        },
+        "confusion_rows_truth_columns_prediction": [
+          [
+            360,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            360,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            360,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            360,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            360,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            360,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            360,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            360
+          ]
+        ]
+      },
+      "raw_argmax": {
+        "samples": 2880,
+        "accuracy": 1.0,
+        "dangerous_wrong": 0,
+        "dangerous_rate": 0.0,
+        "command_recall": 1.0,
+        "none_rate": 0.125,
+        "per_class_recall": {
+          "NONE": 1.0,
+          "STOP": 1.0,
+          "FORWARD": 1.0,
+          "BACK": 1.0,
+          "LEFT": 1.0,
+          "RIGHT": 1.0,
+          "GRIP_OPEN": 1.0,
+          "GRIP_CLOSE": 1.0
+        },
+        "confusion_rows_truth_columns_prediction": [
+          [
+            360,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            360,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            360,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            360,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            360,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            360,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            360,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            360
+          ]
+        ]
+      },
+      "per_hand": {
+        "L": {
+          "samples": 1440,
+          "accuracy": 1.0,
+          "dangerous_wrong": 0,
+          "dangerous_rate": 0.0,
+          "command_recall": 1.0,
+          "none_rate": 0.125,
+          "per_class_recall": {
+            "NONE": 1.0,
+            "STOP": 1.0,
+            "FORWARD": 1.0,
+            "BACK": 1.0,
+            "LEFT": 1.0,
+            "RIGHT": 1.0,
+            "GRIP_OPEN": 1.0,
+            "GRIP_CLOSE": 1.0
+          },
+          "confusion_rows_truth_columns_prediction": [
+            [
+              180,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              180,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              180,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              180,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              180,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              180,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              180,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              180
+            ]
+          ]
+        },
+        "R": {
+          "samples": 1440,
+          "accuracy": 1.0,
+          "dangerous_wrong": 0,
+          "dangerous_rate": 0.0,
+          "command_recall": 1.0,
+          "none_rate": 0.125,
+          "per_class_recall": {
+            "NONE": 1.0,
+            "STOP": 1.0,
+            "FORWARD": 1.0,
+            "BACK": 1.0,
+            "LEFT": 1.0,
+            "RIGHT": 1.0,
+            "GRIP_OPEN": 1.0,
+            "GRIP_CLOSE": 1.0
+          },
+          "confusion_rows_truth_columns_prediction": [
+            [
+              180,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              180,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              180,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              180,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              180,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              180,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              180,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              180
+            ]
+          ]
+        }
+      }
+    },
+    "validation": {
+      "with_gate": {
+        "samples": 960,
+        "accuracy": 1.0,
+        "dangerous_wrong": 0,
+        "dangerous_rate": 0.0,
+        "command_recall": 1.0,
+        "none_rate": 0.125,
+        "per_class_recall": {
+          "NONE": 1.0,
+          "STOP": 1.0,
+          "FORWARD": 1.0,
+          "BACK": 1.0,
+          "LEFT": 1.0,
+          "RIGHT": 1.0,
+          "GRIP_OPEN": 1.0,
+          "GRIP_CLOSE": 1.0
+        },
+        "confusion_rows_truth_columns_prediction": [
+          [
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120
+          ]
+        ]
+      },
+      "raw_argmax": {
+        "samples": 960,
+        "accuracy": 1.0,
+        "dangerous_wrong": 0,
+        "dangerous_rate": 0.0,
+        "command_recall": 1.0,
+        "none_rate": 0.125,
+        "per_class_recall": {
+          "NONE": 1.0,
+          "STOP": 1.0,
+          "FORWARD": 1.0,
+          "BACK": 1.0,
+          "LEFT": 1.0,
+          "RIGHT": 1.0,
+          "GRIP_OPEN": 1.0,
+          "GRIP_CLOSE": 1.0
+        },
+        "confusion_rows_truth_columns_prediction": [
+          [
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120
+          ]
+        ]
+      },
+      "per_hand": {
+        "L": {
+          "samples": 480,
+          "accuracy": 1.0,
+          "dangerous_wrong": 0,
+          "dangerous_rate": 0.0,
+          "command_recall": 1.0,
+          "none_rate": 0.125,
+          "per_class_recall": {
+            "NONE": 1.0,
+            "STOP": 1.0,
+            "FORWARD": 1.0,
+            "BACK": 1.0,
+            "LEFT": 1.0,
+            "RIGHT": 1.0,
+            "GRIP_OPEN": 1.0,
+            "GRIP_CLOSE": 1.0
+          },
+          "confusion_rows_truth_columns_prediction": [
+            [
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60
+            ]
+          ]
+        },
+        "R": {
+          "samples": 480,
+          "accuracy": 1.0,
+          "dangerous_wrong": 0,
+          "dangerous_rate": 0.0,
+          "command_recall": 1.0,
+          "none_rate": 0.125,
+          "per_class_recall": {
+            "NONE": 1.0,
+            "STOP": 1.0,
+            "FORWARD": 1.0,
+            "BACK": 1.0,
+            "LEFT": 1.0,
+            "RIGHT": 1.0,
+            "GRIP_OPEN": 1.0,
+            "GRIP_CLOSE": 1.0
+          },
+          "confusion_rows_truth_columns_prediction": [
+            [
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60
+            ]
+          ]
+        }
+      }
+    },
+    "test": {
+      "with_gate": {
+        "samples": 960,
+        "accuracy": 1.0,
+        "dangerous_wrong": 0,
+        "dangerous_rate": 0.0,
+        "command_recall": 1.0,
+        "none_rate": 0.125,
+        "per_class_recall": {
+          "NONE": 1.0,
+          "STOP": 1.0,
+          "FORWARD": 1.0,
+          "BACK": 1.0,
+          "LEFT": 1.0,
+          "RIGHT": 1.0,
+          "GRIP_OPEN": 1.0,
+          "GRIP_CLOSE": 1.0
+        },
+        "confusion_rows_truth_columns_prediction": [
+          [
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120
+          ]
+        ]
+      },
+      "raw_argmax": {
+        "samples": 960,
+        "accuracy": 1.0,
+        "dangerous_wrong": 0,
+        "dangerous_rate": 0.0,
+        "command_recall": 1.0,
+        "none_rate": 0.125,
+        "per_class_recall": {
+          "NONE": 1.0,
+          "STOP": 1.0,
+          "FORWARD": 1.0,
+          "BACK": 1.0,
+          "LEFT": 1.0,
+          "RIGHT": 1.0,
+          "GRIP_OPEN": 1.0,
+          "GRIP_CLOSE": 1.0
+        },
+        "confusion_rows_truth_columns_prediction": [
+          [
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            120
+          ]
+        ]
+      },
+      "per_hand": {
+        "L": {
+          "samples": 480,
+          "accuracy": 1.0,
+          "dangerous_wrong": 0,
+          "dangerous_rate": 0.0,
+          "command_recall": 1.0,
+          "none_rate": 0.125,
+          "per_class_recall": {
+            "NONE": 1.0,
+            "STOP": 1.0,
+            "FORWARD": 1.0,
+            "BACK": 1.0,
+            "LEFT": 1.0,
+            "RIGHT": 1.0,
+            "GRIP_OPEN": 1.0,
+            "GRIP_CLOSE": 1.0
+          },
+          "confusion_rows_truth_columns_prediction": [
+            [
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60
+            ]
+          ]
+        },
+        "R": {
+          "samples": 480,
+          "accuracy": 1.0,
+          "dangerous_wrong": 0,
+          "dangerous_rate": 0.0,
+          "command_recall": 1.0,
+          "none_rate": 0.125,
+          "per_class_recall": {
+            "NONE": 1.0,
+            "STOP": 1.0,
+            "FORWARD": 1.0,
+            "BACK": 1.0,
+            "LEFT": 1.0,
+            "RIGHT": 1.0,
+            "GRIP_OPEN": 1.0,
+            "GRIP_CLOSE": 1.0
+          },
+          "confusion_rows_truth_columns_prediction": [
+            [
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              60
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "interpretation": "Frame-level results on held-out sessions, not robot success. The controller also needs a command held 0.15 s (motion) / 0.4 s (grip) and stops on NONE, so single wrong frames rarely move the robot. If you change anything after looking at TEST, record a new test session."
+}

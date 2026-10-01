@@ -1,0 +1,14 @@
+{
+  "session": "20261001-203814-f3e5bb",
+  "split": "train",
+  "note": "",
+  "camera": 0,
+  "mirrored": true,
+  "feature_version": "wrist-relative-palm-scale-mirrored-xyz-v1",
+  "label_set": "commands-v1",
+  "hands": [
+    "L",
+    "R"
+  ],
+  "created": "2026-10-01 20:38:14"
+}
